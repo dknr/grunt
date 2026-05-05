@@ -82,8 +82,6 @@ func (s *Server) setupRoutes() {
 }
 
 func (s *Server) Serve() error {
-	slog.Info("Starting grunt server", "addr", s.httpSrv.Addr)
-
 	// Graceful shutdown setup
 	go func() {
 		sigCh := make(chan os.Signal, 1)
@@ -100,6 +98,8 @@ func (s *Server) Serve() error {
 
 		s.store.Close()
 	}()
+
+	slog.Info("Starting grunt server", "addr", s.httpSrv.Addr)
 
 	return s.httpSrv.ListenAndServe()
 }

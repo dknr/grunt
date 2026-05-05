@@ -5,7 +5,7 @@ A simple chat protocol for Grugs.
 ## Features
 
 - WebSocket-based pub/sub messaging
-- In-memory SQLite message storage
+- SQLite message storage (in-memory or on-disk)
 - JSON wire protocol
 - Server-to-client join/leave notifications
 - Message history sync endpoint
@@ -15,7 +15,8 @@ A simple chat protocol for Grugs.
 ### Server
 
 ```bash
-grunt server
+grunt serve                           # in-memory database (default)
+grunt serve /path/to/database.sqlite  # on-disk database
 ```
 
 ### Client

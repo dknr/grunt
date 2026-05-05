@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -15,11 +16,17 @@ type Store struct {
 	db *sql.DB
 }
 
-func New() (*Store, error) {
-	db, err := sql.Open("sqlite", ":memory:")
+func New(dsn string) (*Store, error) {
+	if dsn == "" {
+		dsn = ":memory:"
+	}
+
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+
+	slog.Info("Database loaded", "dsn", dsn)
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS messages (
