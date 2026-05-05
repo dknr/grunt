@@ -7,6 +7,7 @@ type Broadcast struct {
 	ID        int       `json:"id"`
 	Content   string    `json:"content,omitempty"`
 	ClientID  string    `json:"client_id,omitempty"`
+	UserID    string    `json:"user,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
 }
 

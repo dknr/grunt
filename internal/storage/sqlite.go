@@ -29,18 +29,42 @@ func New(dsn string) (*Store, error) {
 	slog.Info("Database loaded", "dsn", dsn)
 
 	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS users (
+			user TEXT PRIMARY KEY
+		)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("create users table: %w", err)
+	}
+
+	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			content TEXT,
 			client_id TEXT,
+			user TEXT,
 			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("create table: %w", err)
+		return nil, fmt.Errorf("create messages table: %w", err)
 	}
 
 	return &Store{db: db}, nil
+}
+
+func (s *Store) CreateUser(user string) error {
+	_, err := s.db.Exec("INSERT OR IGNORE INTO users (user) VALUES (?)", user)
+	return err
+}
+
+func (s *Store) UserExists(user string) (bool, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM users WHERE user = ?", user).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (s *Store) Close() error {
@@ -49,8 +73,8 @@ func (s *Store) Close() error {
 
 func (s *Store) Save(msg *message.Broadcast) (int64, error) {
 	res, err := s.db.Exec(
-		"INSERT INTO messages (content, client_id, timestamp) VALUES (?, ?, ?)",
-		msg.Content, msg.ClientID, msg.Timestamp,
+		"INSERT INTO messages (content, client_id, user, timestamp) VALUES (?, ?, ?, ?)",
+		msg.Content, msg.ClientID, msg.UserID, msg.Timestamp,
 	)
 	if err != nil {
 		return 0, err
@@ -63,10 +87,10 @@ func (s *Store) Sync(since int, limit int) ([]message.Broadcast, error) {
 	var args []interface{}
 
 	if limit > 0 {
-		query = "SELECT id, content, client_id, timestamp FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?"
+		query = "SELECT id, content, client_id, user, timestamp FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?"
 		args = []interface{}{since, limit}
 	} else {
-		query = "SELECT id, content, client_id, timestamp FROM messages WHERE id > ? ORDER BY id ASC"
+		query = "SELECT id, content, client_id, user, timestamp FROM messages WHERE id > ? ORDER BY id ASC"
 		args = []interface{}{since}
 	}
 
@@ -80,7 +104,7 @@ func (s *Store) Sync(since int, limit int) ([]message.Broadcast, error) {
 	for rows.Next() {
 		var m message.Broadcast
 		var ts string
-		if err := rows.Scan(&m.ID, &m.Content, &m.ClientID, &ts); err != nil {
+		if err := rows.Scan(&m.ID, &m.Content, &m.ClientID, &m.UserID, &ts); err != nil {
 			return nil, err
 		}
 		m.Timestamp, _ = time.Parse(time.RFC3339, ts)

@@ -34,6 +34,7 @@ type Client struct {
 	conn     *websocket.Conn
 	send     chan []byte
 	clientID string
+	userID   string
 	done     chan struct{}
 }
 
@@ -111,41 +112,50 @@ func (c *Client) readPump() {
 		_, rawMsg, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				slog.Warn("WebSocket error for client", "client_id", c.clientID, "error", err)
+				slog.Warn("WebSocket error for client", "client_id", c.clientID, "user", c.userID, "error", err)
 			} else {
-				slog.Info("Client read close (normal)", "client_id", c.clientID)
+				slog.Info("Client read close (normal)", "client_id", c.clientID, "user", c.userID)
 			}
 			break
 		}
 
+		slog.Info("Received message", "client_id", c.clientID, "user", c.userID, "raw", string(rawMsg))
+
 		// Parse client message
 		var clientMsg message.ClientMsg
 		if err := json.Unmarshal(rawMsg, &clientMsg); err != nil {
-			slog.Warn("Client sent invalid JSON", "client_id", c.clientID, "error", err)
+			slog.Warn("Client sent invalid JSON", "client_id", c.clientID, "user", c.userID, "error", err)
 			continue
 		}
 
+		slog.Info("Parsed message", "client_id", c.clientID, "user", c.userID, "content", clientMsg.Content)
+
 		// Create broadcast message
 		broadcast := &message.Broadcast{
-			Content:  clientMsg.Content,
-			ClientID: c.clientID,
+			Content:   clientMsg.Content,
+			ClientID:  c.clientID,
+			UserID:    c.userID,
 			Timestamp: time.Now(),
 		}
 
 		// Save to storage
 		id, err := c.hub.store.Save(broadcast)
 		if err != nil {
-			slog.Error("Error saving message", "error", err)
+			slog.Error("Error saving message", "client_id", c.clientID, "user", c.userID, "error", err)
 			continue
 		}
 		broadcast.ID = int(id)
 
+		slog.Info("Saved message", "client_id", c.clientID, "user", c.userID, "id", id)
+
 		// Broadcast to other clients
 		data, err := json.Marshal(broadcast)
 		if err != nil {
-			slog.Error("Error marshaling broadcast", "error", err)
+			slog.Error("Error marshaling broadcast", "client_id", c.clientID, "user", c.userID, "error", err)
 			continue
 		}
+
+		slog.Info("Broadcasting message", "client_id", c.clientID, "user", c.userID, "data", string(data))
 
 		// Send to all clients (including sender for consistency)
 		c.hub.broadcast <- data
@@ -186,6 +196,21 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
+	user := c.Query("user")
+	if user != "" {
+		exists, err := h.store.UserExists(user)
+		if err != nil {
+			slog.Error("Error checking user", "error", err)
+			conn.Close()
+			return
+		}
+		if !exists {
+			slog.Warn("User does not exist", "user", user)
+			conn.Close()
+			return
+		}
+	}
+
 	clientID, err := gonanoid.Generate("_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 16)
 	if err != nil {
 		slog.Error("Error generating client ID", "error", err)
@@ -199,6 +224,7 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 		send:     make(chan []byte, 256),
 		done:     make(chan struct{}),
 		clientID: clientID,
+		userID:   user,
 	}
 
 	h.register <- client

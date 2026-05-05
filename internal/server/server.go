@@ -54,6 +54,23 @@ func New(store *storage.Store) *Server {
 }
 
 func (s *Server) setupRoutes() {
+	// User registration
+	s.r.POST("/user", func(c *gin.Context) {
+		var req struct {
+			User string `json:"user"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing user field"})
+			return
+		}
+		if err := s.store.CreateUser(req.User); err != nil {
+			slog.Error("Error creating user", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"message": "user created"})
+	})
+
 	// WebSocket endpoint
 	s.r.GET("/ws", s.hub.HandleWebSocket)
 
