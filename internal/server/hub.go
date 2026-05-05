@@ -48,6 +48,10 @@ func NewHub(store *storage.Store) *Hub {
 	}
 }
 
+func (h *Hub) BroadcastMessage(data []byte) {
+	h.broadcast <- data
+}
+
 func (h *Hub) Run() {
 	for {
 		select {

@@ -25,6 +25,10 @@ type Server struct {
 }
 
 func New(store *storage.Store) *Server {
+	return NewWithPort(store, 54765)
+}
+
+func NewWithPort(store *storage.Store, port int) *Server {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -43,7 +47,7 @@ func New(store *storage.Store) *Server {
 
 	// Setup HTTP server for graceful shutdown
 	s.httpSrv = &http.Server{
-		Addr:         ":54765",
+		Addr:         ":" + strconv.Itoa(port),
 		Handler:      s.r,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
