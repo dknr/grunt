@@ -58,11 +58,19 @@ func (s *Store) Save(msg *message.Broadcast) (int64, error) {
 	return res.LastInsertId()
 }
 
-func (s *Store) Sync(since int) ([]message.Broadcast, error) {
-	rows, err := s.db.QueryContext(context.Background(),
-		"SELECT id, content, client_id, timestamp FROM messages WHERE id > ? ORDER BY id ASC",
-		since,
-	)
+func (s *Store) Sync(since int, limit int) ([]message.Broadcast, error) {
+	var query string
+	var args []interface{}
+
+	if limit > 0 {
+		query = "SELECT id, content, client_id, timestamp FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?"
+		args = []interface{}{since, limit}
+	} else {
+		query = "SELECT id, content, client_id, timestamp FROM messages WHERE id > ? ORDER BY id ASC"
+		args = []interface{}{since}
+	}
+
+	rows, err := s.db.QueryContext(context.Background(), query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -78,5 +86,13 @@ func (s *Store) Sync(since int) ([]message.Broadcast, error) {
 		m.Timestamp, _ = time.Parse(time.RFC3339, ts)
 		msgs = append(msgs, m)
 	}
+
+	if limit > 0 {
+		// Reverse to return oldest-first
+		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+			msgs[i], msgs[j] = msgs[j], msgs[i]
+		}
+	}
+
 	return msgs, rows.Err()
 }

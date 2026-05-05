@@ -70,7 +70,18 @@ func (s *Server) setupRoutes() {
 			}
 		}
 
-		msgs, err := s.store.Sync(since)
+		lastStr := c.Query("last")
+		last := 0
+		if lastStr != "" {
+			var err error
+			last, err = strconv.Atoi(lastStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid last parameter"})
+				return
+			}
+		}
+
+		msgs, err := s.store.Sync(since, last)
 		if err != nil {
 			slog.Error("Error syncing messages", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to sync messages"})
