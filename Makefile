@@ -11,10 +11,10 @@ LDFLAGS := -s -w \
 BINARY_NAME ?= grunt
 BUILD_DIR   ?= dist
 
-.PHONY: build clean test version install build-all
+.PHONY: build clean test test-integration test-short version install build-all
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/grunt
+	cd cmd && go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME) ./grunt
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -22,12 +22,14 @@ clean:
 
 test:
 	go test -v -race ./...
+	cd cmd && go test -v -race ./...
 
 test-integration:
-	go test -v -race ./internal/testutil/...
+	cd cmd && go test -v -race ./internal/testutil/...
 
 test-short:
 	go test -v ./...
+	cd cmd && go test -v ./...
 
 version:
 	@echo "Version: $(VERSION)$(DIRTY)"
@@ -38,8 +40,8 @@ install: build
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/$(BINARY_NAME)
 
 build-all: build
-	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/grunt
-	GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/grunt
-	GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/grunt
-	GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/grunt
-	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/grunt
+	cd cmd && GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./grunt
+	cd cmd && GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./grunt
+	cd cmd && GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./grunt
+	cd cmd && GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./grunt
+	cd cmd && GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./grunt

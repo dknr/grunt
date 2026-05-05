@@ -7,8 +7,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"grunt/internal/server"
-	"grunt/internal/storage"
+	"grunt/cmd/internal/server"
+	"grunt/cmd/internal/storage"
 )
 
 func init() {

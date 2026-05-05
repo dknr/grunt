@@ -9,7 +9,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"grunt/internal/message"
+	"grunt"
 )
 
 type Store struct {
@@ -71,7 +71,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) Save(msg *message.Broadcast) (int64, error) {
+func (s *Store) Save(msg *grunt.Broadcast) (int64, error) {
 	res, err := s.db.Exec(
 		"INSERT INTO messages (content, client_id, user, timestamp) VALUES (?, ?, ?, ?)",
 		msg.Content, msg.ClientID, msg.UserID, msg.Timestamp,
@@ -82,7 +82,7 @@ func (s *Store) Save(msg *message.Broadcast) (int64, error) {
 	return res.LastInsertId()
 }
 
-func (s *Store) Sync(since int, limit int) ([]message.Broadcast, error) {
+func (s *Store) Sync(since int, limit int) ([]grunt.Broadcast, error) {
 	var query string
 	var args []interface{}
 
@@ -100,9 +100,9 @@ func (s *Store) Sync(since int, limit int) ([]message.Broadcast, error) {
 	}
 	defer rows.Close()
 
-	var msgs []message.Broadcast
+	var msgs []grunt.Broadcast
 	for rows.Next() {
-		var m message.Broadcast
+		var m grunt.Broadcast
 		var ts string
 		if err := rows.Scan(&m.ID, &m.Content, &m.ClientID, &m.UserID, &ts); err != nil {
 			return nil, err

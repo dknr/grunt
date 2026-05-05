@@ -40,7 +40,7 @@ func TestIntegrationMessageFlow(t *testing.T) {
 
 	// Build the grunt binary
 	binPath := tmpDir + "/grunt"
-	buildCmd := exec.Command("go", "build", "-o", binPath, "./cmd/grunt")
+	buildCmd := exec.Command("go", "build", "-o", binPath, "./grunt")
 	buildCmd.Dir = "../.."
 	var buildOut bytes.Buffer
 	buildCmd.Stdout = &buildOut

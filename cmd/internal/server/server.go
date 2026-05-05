@@ -13,8 +13,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"grunt/internal/message"
-	"grunt/internal/storage"
+	"grunt"
+	"grunt/cmd/internal/storage"
 )
 
 type Server struct {
@@ -137,7 +137,7 @@ func (s *Server) Serve() error {
 }
 
 // SendSyncResponse sends a sync response to a websocket client
-func (s *Server) SendSyncResponse(conn *websocket.Conn, msgs []message.Broadcast) error {
+func (s *Server) SendSyncResponse(conn *websocket.Conn, msgs []grunt.Broadcast) error {
 	data, err := json.Marshal(msgs)
 	if err != nil {
 		return err

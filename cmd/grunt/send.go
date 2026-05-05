@@ -1,14 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
-	"strings"
 
-	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
+	"grunt"
 )
 
 var sendCmd = &cobra.Command{
@@ -23,31 +20,18 @@ var sendCmd = &cobra.Command{
 			serverAddr = "http://localhost:54765"
 		}
 
-		// Register user if not exists
-		resp, err := http.Post(serverAddr+"/user", "application/json", strings.NewReader(fmt.Sprintf(`{"user":"%s"}`, user)))
-		if err != nil {
+		client := grunt.NewClient(serverAddr, user)
+		defer client.Close()
+
+		if err := client.Register(); err != nil {
 			log.Fatalf("Failed to register user: %v", err)
 		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
-			log.Fatalf("Failed to register user: %s", resp.Status)
-		}
 
-		msg := map[string]string{
-			"content": msgText,
-		}
-		data, err := json.Marshal(msg)
-		if err != nil {
-			log.Fatalf("Failed to marshal message: %v", err)
-		}
-
-		conn, _, err := websocket.DefaultDialer.Dial(strings.Replace(serverAddr, "http", "ws", 1)+"/ws?user="+user, nil)
-		if err != nil {
+		if err := client.Connect(); err != nil {
 			log.Fatalf("Failed to connect: %v", err)
 		}
-		defer conn.Close()
 
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		if err := client.SendMessage(msgText); err != nil {
 			log.Fatalf("Failed to send message: %v", err)
 		}
 

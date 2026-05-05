@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"grunt/internal/message"
+	"grunt"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -83,7 +83,7 @@ func TestSaveMessage(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	msg := &message.Broadcast{
+	msg := &grunt.Broadcast{
 		Content:  "Hello, World!",
 		ClientID: "client123",
 		UserID:   "testuser",
@@ -133,7 +133,7 @@ func TestSyncMessages(t *testing.T) {
 
 	// Save multiple messages
 	for i := 1; i <= 5; i++ {
-		msg := &message.Broadcast{
+		msg := &grunt.Broadcast{
 			Content:  "Message " + string(rune('0'+i)),
 			ClientID: "client123",
 			UserID:   "testuser",

@@ -10,8 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/matoous/go-nanoid/v2"
-	"grunt/internal/message"
-	"grunt/internal/storage"
+	"grunt"
+	"grunt/cmd/internal/storage"
 )
 
 var upgrader = websocket.Upgrader{
@@ -60,7 +60,7 @@ func (h *Hub) Run() {
 			h.clients[client.clientID] = client
 			h.mu.Unlock()
 			slog.Info("Client connected", "client_id", client.clientID, "total_clients", len(h.clients))
-			h.broadcastSystem(&message.System{
+			h.broadcastSystem(&grunt.System{
 				System:   "join",
 				ClientID: client.clientID,
 			})
@@ -71,7 +71,7 @@ func (h *Hub) Run() {
 				delete(h.clients, client.clientID)
 				// Do NOT close client.send here; writePump handles it
 				slog.Info("Client disconnected", "client_id", client.clientID, "total_clients", len(h.clients))
-				h.broadcastSystem(&message.System{
+				h.broadcastSystem(&grunt.System{
 					System:   "leave",
 					ClientID: client.clientID,
 				})
@@ -96,7 +96,7 @@ func (h *Hub) Run() {
 	}
 }
 
-func (h *Hub) broadcastSystem(sys *message.System) {
+func (h *Hub) broadcastSystem(sys *grunt.System) {
 	data, err := json.Marshal(sys)
 	if err != nil {
 		slog.Error("Error marshaling system message", "error", err)
@@ -126,7 +126,7 @@ func (c *Client) readPump() {
 		slog.Info("Received message", "client_id", c.clientID, "user", c.userID, "raw", string(rawMsg))
 
 		// Parse client message
-		var clientMsg message.ClientMsg
+		var clientMsg grunt.ClientMsg
 		if err := json.Unmarshal(rawMsg, &clientMsg); err != nil {
 			slog.Warn("Client sent invalid JSON", "client_id", c.clientID, "user", c.userID, "error", err)
 			continue
@@ -135,7 +135,7 @@ func (c *Client) readPump() {
 		slog.Info("Parsed message", "client_id", c.clientID, "user", c.userID, "content", clientMsg.Content)
 
 		// Create broadcast message
-		broadcast := &message.Broadcast{
+		broadcast := &grunt.Broadcast{
 			Content:   clientMsg.Content,
 			ClientID:  c.clientID,
 			UserID:    c.userID,
