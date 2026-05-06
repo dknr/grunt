@@ -61,18 +61,52 @@ func (s *Server) setupRoutes() {
 	// User registration
 	s.r.POST("/user", func(c *gin.Context) {
 		var req struct {
-			User string `json:"user"`
+			User     string `json:"user"`
+			Password string `json:"password"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing user field"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing user or password field"})
 			return
 		}
-		if err := s.store.CreateUser(req.User); err != nil {
+		if req.User == "" || req.Password == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user and password are required"})
+			return
+		}
+		if err := s.store.CreateUser(req.User, req.Password); err != nil {
 			slog.Error("Error creating user", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 			return
 		}
 		c.JSON(http.StatusCreated, gin.H{"message": "user created"})
+	})
+
+	// Login endpoint
+	s.r.POST("/auth/login", func(c *gin.Context) {
+		var req struct {
+			User     string `json:"user"`
+			Password string `json:"password"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing user or password field"})
+			return
+		}
+		ok, err := s.store.VerifyUser(req.User, req.Password)
+		if err != nil {
+			slog.Error("Error verifying user", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify user"})
+			return
+		}
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+			return
+		}
+		token, err := s.hub.GenerateToken(req.User)
+		if err != nil {
+			slog.Error("Error generating token", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"token": token})
 	})
 
 	// WebSocket endpoint

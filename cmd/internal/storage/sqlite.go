@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
 	"grunt"
@@ -30,7 +31,8 @@ func New(dsn string) (*Store, error) {
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
-			user TEXT PRIMARY KEY
+			user TEXT PRIMARY KEY,
+			password_hash TEXT NOT NULL DEFAULT ''
 		)
 	`)
 	if err != nil {
@@ -53,18 +55,25 @@ func New(dsn string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-func (s *Store) CreateUser(user string) error {
-	_, err := s.db.Exec("INSERT OR IGNORE INTO users (user) VALUES (?)", user)
+func (s *Store) CreateUser(user, password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	_, err = s.db.Exec("INSERT OR IGNORE INTO users (user, password_hash) VALUES (?, ?)", user, string(hash))
 	return err
 }
 
-func (s *Store) UserExists(user string) (bool, error) {
-	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM users WHERE user = ?", user).Scan(&count)
+func (s *Store) VerifyUser(user, password string) (bool, error) {
+	var hash string
+	err := s.db.QueryRow("SELECT password_hash FROM users WHERE user = ?", user).Scan(&hash)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
 	if err != nil {
 		return false, err
 	}
-	return count > 0, nil
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil, nil
 }
 
 func (s *Store) Close() error {

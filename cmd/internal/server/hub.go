@@ -20,6 +20,53 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// TokenStore manages authentication tokens.
+type TokenStore struct {
+	tokens map[string]*TokenEntry
+	mu     sync.RWMutex
+}
+
+type TokenEntry struct {
+	UserID string
+	Expiry time.Time
+}
+
+var tokenStore = &TokenStore{
+	tokens: make(map[string]*TokenEntry),
+}
+
+// GenerateToken creates a new auth token for the given user.
+func (h *Hub) GenerateToken(userID string) (string, error) {
+	token, err := gonanoid.Generate("_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 32)
+	if err != nil {
+		return "", err
+	}
+	expiresAt := time.Now().Add(24 * time.Hour)
+	tokenStore.mu.Lock()
+	tokenStore.tokens[token] = &TokenEntry{
+		UserID: userID,
+		Expiry: expiresAt,
+	}
+	tokenStore.mu.Unlock()
+	return token, nil
+}
+
+// ValidateToken checks if the given token is valid and returns the associated user ID.
+func ValidateToken(token string) (string, bool) {
+	tokenStore.mu.RLock()
+	defer tokenStore.mu.RUnlock()
+	entry, ok := tokenStore.tokens[token]
+	if !ok {
+		return "", false
+	}
+	if time.Now().After(entry.Expiry) {
+		// Token expired, clean it up
+		delete(tokenStore.tokens, token)
+		return "", false
+	}
+	return entry.UserID, true
+}
+
 type Hub struct {
 	clients    map[string]*Client
 	mu         sync.RWMutex
@@ -200,19 +247,19 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 		return
 	}
 
-	user := c.Query("user")
-	if user != "" {
-		exists, err := h.store.UserExists(user)
-		if err != nil {
-			slog.Error("Error checking user", "error", err)
-			conn.Close()
-			return
-		}
-		if !exists {
-			slog.Warn("User does not exist", "user", user)
-			conn.Close()
-			return
-		}
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+		conn.Close()
+		return
+	}
+
+	userID, ok := ValidateToken(token)
+	if !ok {
+		slog.Warn("Invalid or expired token", "token", token)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+		conn.Close()
+		return
 	}
 
 	clientID, err := gonanoid.Generate("_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 16)
@@ -228,7 +275,7 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 		send:     make(chan []byte, 256),
 		done:     make(chan struct{}),
 		clientID: clientID,
-		userID:   user,
+		userID:   userID,
 	}
 
 	h.register <- client

@@ -35,42 +35,51 @@ func TestCreateUser(t *testing.T) {
 	store := newTestStore(t)
 
 	// Create a new user
-	err := store.CreateUser("testuser")
+	err := store.CreateUser("testuser", "password123")
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
 	// Try to create the same user again (should not error due to OR IGNORE)
-	err = store.CreateUser("testuser")
+	err = store.CreateUser("testuser", "password456")
 	if err != nil {
 		t.Fatalf("Failed to create duplicate user: %v", err)
 	}
 }
 
-func TestUserExists(t *testing.T) {
+func TestVerifyUser(t *testing.T) {
 	store := newTestStore(t)
 
-	// User doesn't exist yet
-	exists, err := store.UserExists("nonexistent")
+	// Verify nonexistent user
+	ok, err := store.VerifyUser("nonexistent", "password")
 	if err != nil {
-		t.Fatalf("Failed to check user existence: %v", err)
+		t.Fatalf("Failed to verify nonexistent user: %v", err)
 	}
-	if exists {
-		t.Error("User should not exist")
+	if ok {
+		t.Error("Nonexistent user should not verify")
 	}
 
-	// Create user and check again
-	err = store.CreateUser("testuser")
+	// Create user and verify correct password
+	err = store.CreateUser("testuser", "correctpassword")
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	exists, err = store.UserExists("testuser")
+	ok, err = store.VerifyUser("testuser", "correctpassword")
 	if err != nil {
-		t.Fatalf("Failed to check user existence: %v", err)
+		t.Fatalf("Failed to verify user: %v", err)
 	}
-	if !exists {
-		t.Error("User should exist")
+	if !ok {
+		t.Error("User should verify with correct password")
+	}
+
+	// Verify with wrong password
+	ok, err = store.VerifyUser("testuser", "wrongpassword")
+	if err != nil {
+		t.Fatalf("Failed to verify user with wrong password: %v", err)
+	}
+	if ok {
+		t.Error("User should not verify with wrong password")
 	}
 }
 
@@ -78,7 +87,7 @@ func TestSaveMessage(t *testing.T) {
 	store := newTestStore(t)
 
 	// Create a user first
-	err := store.CreateUser("testuser")
+	err := store.CreateUser("testuser", "password")
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}
@@ -126,7 +135,7 @@ func TestSyncMessages(t *testing.T) {
 	store := newTestStore(t)
 
 	// Create a user
-	err := store.CreateUser("testuser")
+	err := store.CreateUser("testuser", "password")
 	if err != nil {
 		t.Fatalf("Failed to create user: %v", err)
 	}

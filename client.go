@@ -16,6 +16,7 @@ type Client struct {
 	HTTPClient *http.Client
 	WSConn     *websocket.Conn
 	UserID     string
+	Token      string
 
 	// Channels for communication
 	messageChan chan []byte // raw WebSocket messages
@@ -41,8 +42,8 @@ func NewClient(serverAddr, userID string) *Client {
 }
 
 // Register registers the user with the grunt server.
-func (c *Client) Register() error {
-	payload := fmt.Sprintf(`{"user":"%s"}`, c.UserID)
+func (c *Client) Register(password string) error {
+	payload := fmt.Sprintf(`{"user":"%s","password":"%s"}`, c.UserID, password)
 	resp, err := c.HTTPClient.Post(c.ServerAddr+"/user", "application/json", strings.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("failed to register user: %w", err)
@@ -56,8 +57,33 @@ func (c *Client) Register() error {
 	return nil
 }
 
+// Login authenticates the user with the grunt server and stores the token.
+func (c *Client) Login(password string) error {
+	payload := fmt.Sprintf(`{"user":"%s","password":"%s"}`, c.UserID, password)
+	resp, err := c.HTTPClient.Post(c.ServerAddr+"/auth/login", "application/json", strings.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to login: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to login: %s", resp.Status)
+	}
+
+	var result struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to decode login response: %w", err)
+	}
+
+	c.Token = result.Token
+	return nil
+}
+
 // Connect establishes a WebSocket connection to the grunt server.
 // Message listening is not started automatically; use StartListening() to begin.
+// Uses the stored token for authentication.
 func (c *Client) Connect() error {
 	c.mutex.Lock()
 	if c.connected {
@@ -66,7 +92,13 @@ func (c *Client) Connect() error {
 	}
 	c.mutex.Unlock()
 
-	wsURL := strings.Replace(c.ServerAddr, "http", "ws", 1) + "/ws?user=" + c.UserID
+	var wsURL string
+	if c.Token != "" {
+		wsURL = strings.Replace(c.ServerAddr, "http", "ws", 1) + "/ws?token=" + c.Token
+	} else {
+		wsURL = strings.Replace(c.ServerAddr, "http", "ws", 1) + "/ws?user=" + c.UserID
+	}
+
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to connect to websocket: %w", err)

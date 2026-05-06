@@ -4,17 +4,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"grunt"
 )
 
 var recvCmd = &cobra.Command{
-	Use:   "recv <user>",
+	Use:   "recv",
 	Short: "Receive messages from the grunt server",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		user := args[0]
+		login := os.Getenv("GRUNT_LOGIN")
+		if login == "" {
+			log.Fatal("GRUNT_LOGIN environment variable not set (expected user:password)")
+		}
+		parts := strings.SplitN(login, ":", 2)
+		if len(parts) != 2 {
+			log.Fatal("GRUNT_LOGIN invalid (expected user:password)")
+		}
+		user, password := parts[0], parts[1]
+
 		serverAddr, _ := cmd.Flags().GetString("server")
 		if serverAddr == "" {
 			serverAddr = "http://localhost:54765"
@@ -23,8 +34,12 @@ var recvCmd = &cobra.Command{
 		client := grunt.NewClient(serverAddr, user)
 		defer client.Close()
 
-		if err := client.Register(); err != nil {
-			log.Fatalf("Failed to register user: %v", err)
+		if err := client.Register(password); err != nil {
+			log.Fatalf("Failed to register: %v", err)
+		}
+
+		if err := client.Login(password); err != nil {
+			log.Fatalf("Failed to login: %v", err)
 		}
 
 		if err := client.Connect(); err != nil {
