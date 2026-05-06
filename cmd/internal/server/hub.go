@@ -249,6 +249,7 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 
 	token := c.Query("token")
 	if token == "" {
+		slog.Warn("WebSocket connection rejected", "reason", "missing token")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
 		conn.Close()
 		return
@@ -256,7 +257,7 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 
 	userID, ok := ValidateToken(token)
 	if !ok {
-		slog.Warn("Invalid or expired token", "token", token)
+		slog.Warn("WebSocket connection rejected", "reason", "invalid or expired token")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 		conn.Close()
 		return
@@ -268,6 +269,8 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 		conn.Close()
 		return
 	}
+
+	slog.Info("WebSocket connection", "user", userID, "client_id", clientID)
 
 	client := &Client{
 		hub:      h,

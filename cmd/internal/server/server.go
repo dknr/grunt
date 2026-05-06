@@ -65,10 +65,12 @@ func (s *Server) setupRoutes() {
 			Password string `json:"password"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
+			slog.Warn("Registration attempt", "user", req.User, "reason", "invalid request body")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing user or password field"})
 			return
 		}
 		if req.User == "" || req.Password == "" {
+			slog.Warn("Registration attempt", "user", req.User, "reason", "missing fields")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "user and password are required"})
 			return
 		}
@@ -77,6 +79,7 @@ func (s *Server) setupRoutes() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 			return
 		}
+		slog.Info("User registered", "user", req.User)
 		c.JSON(http.StatusCreated, gin.H{"message": "user created"})
 	})
 
@@ -97,6 +100,7 @@ func (s *Server) setupRoutes() {
 			return
 		}
 		if !ok {
+			slog.Warn("Failed login attempt", "user", req.User)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 			return
 		}
@@ -106,6 +110,7 @@ func (s *Server) setupRoutes() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 			return
 		}
+		slog.Info("User logged in", "user", req.User)
 		c.JSON(http.StatusOK, gin.H{"token": token})
 	})
 
