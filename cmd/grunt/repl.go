@@ -1,12 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 
+	"github.com/chzyer/readline"
 	"github.com/spf13/cobra"
 	"grunt"
 )
@@ -46,16 +46,30 @@ var replCmd = &cobra.Command{
 			log.Fatalf("Failed to connect: %v", err)
 		}
 
-		scanner := bufio.NewScanner(os.Stdin)
-		fmt.Println("Connected. Type a message and press Enter. Type 'quit' or 'exit' to leave.")
+		rl, err := readline.NewEx(&readline.Config{
+			Prompt:      "> ",
+			HistoryLimit: 500,
+		})
+		if err != nil {
+			log.Fatalf("Failed to initialize readline: %v", err)
+		}
+		defer rl.Close()
+
+		w := rl.Stdout()
+		fmt.Fprintf(w, "Connected. Type a message and press Enter. Type 'quit' or 'exit' to leave.\n")
 
 		for {
-			fmt.Print("> ")
-			if !scanner.Scan() {
-				fmt.Println()
+			line, err := rl.Readline()
+			if err != nil {
+				if err == readline.ErrInterrupt {
+					fmt.Fprintln(w)
+					break
+				}
+				// EOF
+				fmt.Fprintln(w)
 				break
 			}
-			line := strings.TrimSpace(scanner.Text())
+			line = strings.TrimSpace(line)
 			if line == "" || strings.EqualFold(line, "quit") || strings.EqualFold(line, "exit") {
 				break
 			}
@@ -64,11 +78,7 @@ var replCmd = &cobra.Command{
 				log.Fatalf("Failed to send message: %v", err)
 			}
 
-			fmt.Println("Message sent.")
-		}
-
-		if err := scanner.Err(); err != nil {
-			log.Fatalf("Error reading input: %v", err)
+			fmt.Fprintln(w, "Message sent.")
 		}
 	},
 }
