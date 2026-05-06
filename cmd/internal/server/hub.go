@@ -107,10 +107,7 @@ func (h *Hub) Run() {
 			h.clients[client.clientID] = client
 			h.mu.Unlock()
 			slog.Info("Client connected", "client_id", client.clientID, "total_clients", len(h.clients))
-			h.broadcastSystem(&grunt.System{
-				System:   "join",
-				ClientID: client.clientID,
-			})
+			h.broadcastEvent("join", client.clientID, client.userID)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -118,10 +115,7 @@ func (h *Hub) Run() {
 				delete(h.clients, client.clientID)
 				// Do NOT close client.send here; writePump handles it
 				slog.Info("Client disconnected", "client_id", client.clientID, "total_clients", len(h.clients))
-				h.broadcastSystem(&grunt.System{
-					System:   "leave",
-					ClientID: client.clientID,
-				})
+				h.broadcastEvent("leave", client.clientID, client.userID)
 			}
 			h.mu.Unlock()
 
@@ -143,10 +137,15 @@ func (h *Hub) Run() {
 	}
 }
 
-func (h *Hub) broadcastSystem(sys *grunt.System) {
-	data, err := json.Marshal(sys)
+func (h *Hub) broadcastEvent(event, clientID, userID string) {
+	data, err := json.Marshal(&grunt.Event{
+		Type:     "event",
+		Event:    event,
+		ClientID: clientID,
+		UserID:   userID,
+	})
 	if err != nil {
-		slog.Error("Error marshaling system message", "error", err)
+		slog.Error("Error marshaling event message", "error", err)
 		return
 	}
 	h.broadcast <- data
@@ -183,6 +182,7 @@ func (c *Client) readPump() {
 
 		// Create broadcast message
 		broadcast := &grunt.Broadcast{
+			Type:      "message",
 			Content:   clientMsg.Content,
 			ClientID:  c.clientID,
 			UserID:    c.userID,

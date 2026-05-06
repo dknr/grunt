@@ -70,21 +70,35 @@ var recvCmd = &cobra.Command{
 
 		// Listen for new messages
 		for msgBytes := range messages {
-			var broadcast grunt.Broadcast
-			if err := json.Unmarshal(msgBytes, &broadcast); err == nil && broadcast.ID != 0 {
-				fmt.Printf("[%s] %s: %s\n", broadcast.UserID, broadcast.Timestamp.Format("15:04:05"), broadcast.Content)
+			var envelope struct {
+				Type string `json:"type"`
+			}
+			if err := json.Unmarshal(msgBytes, &envelope); err != nil {
+				fmt.Printf("Unknown message: %s\n", string(msgBytes))
 				continue
 			}
 
-			var sys grunt.System
-			if err := json.Unmarshal(msgBytes, &sys); err == nil && sys.System != "" {
-				if verbose {
-					fmt.Printf("[System] %s: %s\n", sys.System, sys.ClientID)
+			switch envelope.Type {
+			case "message":
+				var broadcast grunt.Broadcast
+				if err := json.Unmarshal(msgBytes, &broadcast); err == nil && broadcast.ID != 0 {
+					fmt.Printf("[%s] %s: %s\n", broadcast.UserID, broadcast.Timestamp.Format("15:04:05"), broadcast.Content)
 				}
-				continue
+			case "event":
+				var evt grunt.Event
+				if err := json.Unmarshal(msgBytes, &evt); err == nil && evt.Event != "" {
+					if verbose {
+						fmt.Printf("[System] %s: %s\n", evt.Event, evt.ClientID)
+					}
+				}
+			case "error":
+				var serr grunt.Error
+				if err := json.Unmarshal(msgBytes, &serr); err == nil && serr.Message != "" {
+					fmt.Printf("[Error] %s\n", serr.Message)
+				}
+			default:
+				fmt.Printf("Unknown message: %s\n", string(msgBytes))
 			}
-
-			fmt.Printf("Unknown message: %s\n", string(msgBytes))
 		}
 	},
 }

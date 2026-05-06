@@ -2,8 +2,9 @@ package grunt
 
 import "time"
 
-// Broadcast is the format sent to all connected clients.
+// Broadcast is a user message sent to all connected clients.
 type Broadcast struct {
+	Type      string    `json:"type"`
 	ID        int       `json:"id"`
 	Content   string    `json:"content,omitempty"`
 	ClientID  string    `json:"client_id,omitempty"`
@@ -11,10 +12,18 @@ type Broadcast struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// System is a server-to-client notification (join/leave).
-type System struct {
-	System   string `json:"system"`
+// Event is a server-to-client notification (join/leave).
+type Event struct {
+	Type     string `json:"type"`
+	Event    string `json:"event"`
 	ClientID string `json:"client_id"`
+	UserID   string `json:"user"`
+}
+
+// Error is a server-to-client error notification.
+type Error struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
 }
 
 // ClientMsg is sent from client to server.
