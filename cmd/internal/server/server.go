@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"grunt"
 	"grunt/cmd/internal/storage"
@@ -20,7 +19,7 @@ import (
 type Server struct {
 	hub      *Hub
 	store    *storage.Store
-	r        *gin.Engine
+	mux      *http.ServeMux
 	httpSrv  *http.Server
 }
 
@@ -29,16 +28,12 @@ func New(store *storage.Store) *Server {
 }
 
 func NewWithPort(store *storage.Store, port int) *Server {
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	r.Use(gin.Recovery())
-
 	hub := NewHub(store)
 
 	s := &Server{
 		hub:   hub,
 		store: store,
-		r:     r,
+		mux:   http.NewServeMux(),
 	}
 
 	s.setupRoutes()
@@ -48,7 +43,7 @@ func NewWithPort(store *storage.Store, port int) *Server {
 	// Setup HTTP server for graceful shutdown
 	s.httpSrv = &http.Server{
 		Addr:         ":" + strconv.Itoa(port),
-		Handler:      s.r,
+		Handler:      s.mux,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -58,98 +53,100 @@ func NewWithPort(store *storage.Store, port int) *Server {
 }
 
 func (s *Server) setupRoutes() {
-	// User registration
-	s.r.POST("/user", func(c *gin.Context) {
-		var req struct {
-			User     string `json:"user"`
-			Password string `json:"password"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			slog.Warn("Registration attempt", "user", req.User, "reason", "invalid request body")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing user or password field"})
-			return
-		}
-		if req.User == "" || req.Password == "" {
-			slog.Warn("Registration attempt", "user", req.User, "reason", "missing fields")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "user and password are required"})
-			return
-		}
-		if err := s.store.CreateUser(req.User, req.Password); err != nil {
-			slog.Error("Error creating user", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
-			return
-		}
-		slog.Info("User registered", "user", req.User)
-		c.JSON(http.StatusCreated, gin.H{"message": "user created"})
-	})
+	s.mux.HandleFunc("POST /user", s.handleRegister)
+	s.mux.HandleFunc("POST /auth/login", s.handleLogin)
+	s.mux.HandleFunc("GET /ws", s.hub.HandleWebSocket)
+	s.mux.HandleFunc("GET /sync", s.handleSync)
+}
 
-	// Login endpoint
-	s.r.POST("/auth/login", func(c *gin.Context) {
-		var req struct {
-			User     string `json:"user"`
-			Password string `json:"password"`
-		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing user or password field"})
-			return
-		}
-		ok, err := s.store.VerifyUser(req.User, req.Password)
+func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		User     string `json:"user"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		slog.Warn("Registration attempt", "user", req.User, "reason", "invalid request body")
+		http.Error(w, `{"error":"missing user or password field"}`, http.StatusBadRequest)
+		return
+	}
+	if req.User == "" || req.Password == "" {
+		slog.Warn("Registration attempt", "user", req.User, "reason", "missing fields")
+		http.Error(w, `{"error":"user and password are required"}`, http.StatusBadRequest)
+		return
+	}
+	if err := s.store.CreateUser(req.User, req.Password); err != nil {
+		slog.Error("Error creating user", "error", err)
+		http.Error(w, `{"error":"failed to create user"}`, http.StatusInternalServerError)
+		return
+	}
+	slog.Info("User registered", "user", req.User)
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"message": "user created"})
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		User     string `json:"user"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"missing user or password field"}`, http.StatusBadRequest)
+		return
+	}
+	ok, err := s.store.VerifyUser(req.User, req.Password)
+	if err != nil {
+		slog.Error("Error verifying user", "error", err)
+		http.Error(w, `{"error":"failed to verify user"}`, http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		slog.Warn("Failed login attempt", "user", req.User)
+		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
+		return
+	}
+	token, err := s.hub.GenerateToken(req.User)
+	if err != nil {
+		slog.Error("Error generating token", "error", err)
+		http.Error(w, `{"error":"failed to generate token"}`, http.StatusInternalServerError)
+		return
+	}
+	slog.Info("User logged in", "user", req.User)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
+	sinceStr := r.URL.Query().Get("since")
+	since := 0
+	if sinceStr != "" {
+		var err error
+		since, err = strconv.Atoi(sinceStr)
 		if err != nil {
-			slog.Error("Error verifying user", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify user"})
+			http.Error(w, `{"error":"invalid since parameter"}`, http.StatusBadRequest)
 			return
 		}
-		if !ok {
-			slog.Warn("Failed login attempt", "user", req.User)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
-			return
-		}
-		token, err := s.hub.GenerateToken(req.User)
+	}
+
+	lastStr := r.URL.Query().Get("last")
+	last := 0
+	if lastStr != "" {
+		var err error
+		last, err = strconv.Atoi(lastStr)
 		if err != nil {
-			slog.Error("Error generating token", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+			http.Error(w, `{"error":"invalid last parameter"}`, http.StatusBadRequest)
 			return
 		}
-		slog.Info("User logged in", "user", req.User)
-		c.JSON(http.StatusOK, gin.H{"token": token})
-	})
+	}
 
-	// WebSocket endpoint
-	s.r.GET("/ws", s.hub.HandleWebSocket)
+	msgs, err := s.store.Sync(since, last)
+	if err != nil {
+		slog.Error("Error syncing messages", "error", err)
+		http.Error(w, `{"error":"failed to sync messages"}`, http.StatusInternalServerError)
+		return
+	}
 
-	// Sync endpoint
-	s.r.GET("/sync", func(c *gin.Context) {
-		sinceStr := c.Query("since")
-		since := 0
-		if sinceStr != "" {
-			var err error
-			since, err = strconv.Atoi(sinceStr)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid since parameter"})
-				return
-			}
-		}
-
-		lastStr := c.Query("last")
-		last := 0
-		if lastStr != "" {
-			var err error
-			last, err = strconv.Atoi(lastStr)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid last parameter"})
-				return
-			}
-		}
-
-		msgs, err := s.store.Sync(since, last)
-		if err != nil {
-			slog.Error("Error syncing messages", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to sync messages"})
-			return
-		}
-
-		c.JSON(http.StatusOK, msgs)
-	})
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(msgs)
 }
 
 func (s *Server) Serve() error {

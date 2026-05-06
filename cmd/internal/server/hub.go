@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/matoous/go-nanoid/v2"
 	"grunt"
@@ -240,17 +239,18 @@ func (c *Client) writePump() {
 	}
 }
 
-func (h *Hub) HandleWebSocket(c *gin.Context) {
-	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("WebSocket upgrade error", "error", err)
 		return
 	}
 
-	token := c.Query("token")
+	token := r.URL.Query().Get("token")
 	if token == "" {
 		slog.Warn("WebSocket connection rejected", "reason", "missing token")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"missing token"}`))
 		conn.Close()
 		return
 	}
@@ -258,7 +258,8 @@ func (h *Hub) HandleWebSocket(c *gin.Context) {
 	userID, ok := ValidateToken(token)
 	if !ok {
 		slog.Warn("WebSocket connection rejected", "reason", "invalid or expired token")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"invalid or expired token"}`))
 		conn.Close()
 		return
 	}
