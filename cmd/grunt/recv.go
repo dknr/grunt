@@ -11,6 +11,10 @@ import (
 	"grunt"
 )
 
+var (
+	verbose bool
+)
+
 var recvCmd = &cobra.Command{
 	Use:   "recv",
 	Short: "Receive messages from the grunt server",
@@ -74,7 +78,9 @@ var recvCmd = &cobra.Command{
 
 			var sys grunt.System
 			if err := json.Unmarshal(msgBytes, &sys); err == nil && sys.System != "" {
-				fmt.Printf("[System] %s: %s\n", sys.System, sys.ClientID)
+				if verbose {
+					fmt.Printf("[System] %s: %s\n", sys.System, sys.ClientID)
+				}
 				continue
 			}
 
@@ -86,4 +92,5 @@ var recvCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(recvCmd)
 	recvCmd.Flags().String("server", "http://localhost:54765", "Server address")
+	recvCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show system messages")
 }
