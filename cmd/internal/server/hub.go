@@ -9,7 +9,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/matoous/go-nanoid/v2"
-	"grunt"
+	"grunt/client"
 	"grunt/cmd/internal/storage"
 )
 
@@ -137,7 +137,7 @@ func (h *Hub) Run() {
 }
 
 func (h *Hub) broadcastEvent(event, clientID, userID string) {
-	data, err := json.Marshal(&grunt.Event{
+	data, err := json.Marshal(&client.Event{
 		Type:     "event",
 		Event:    event,
 		ClientID: clientID,
@@ -171,7 +171,7 @@ func (c *Client) readPump() {
 		slog.Info("Received message", "client_id", c.clientID, "user", c.userID, "raw", string(rawMsg))
 
 		// Parse client message
-		var clientMsg grunt.ClientMsg
+		var clientMsg client.ClientMsg
 		if err := json.Unmarshal(rawMsg, &clientMsg); err != nil {
 			slog.Warn("Client sent invalid JSON", "client_id", c.clientID, "user", c.userID, "error", err)
 			continue
@@ -180,7 +180,7 @@ func (c *Client) readPump() {
 		slog.Info("Parsed message", "client_id", c.clientID, "user", c.userID, "content", clientMsg.Content)
 
 		// Create broadcast message
-		broadcast := &grunt.Broadcast{
+		broadcast := &client.Broadcast{
 			Type:      "message",
 			Content:   clientMsg.Content,
 			ClientID:  c.clientID,

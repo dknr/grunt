@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"grunt"
+	"grunt/client"
 	"grunt/cmd/internal/storage"
 )
 
@@ -173,10 +173,12 @@ func (s *Server) Serve() error {
 }
 
 // SendSyncResponse sends a sync response to a websocket client
-func (s *Server) SendSyncResponse(conn *websocket.Conn, msgs []grunt.Broadcast) error {
+func (s *Server) SendSyncResponse(conn *websocket.Conn, msgs []client.Broadcast) error {
 	data, err := json.Marshal(msgs)
 	if err != nil {
 		return err
 	}
 	return conn.WriteMessage(websocket.TextMessage, data)
+}
+
 }

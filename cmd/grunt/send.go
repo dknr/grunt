@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"grunt"
+	"grunt/client"
 )
 
 var sendCmd = &cobra.Command{
@@ -31,7 +31,7 @@ var sendCmd = &cobra.Command{
 			serverAddr = "http://localhost:54765"
 		}
 
-		client := grunt.NewClient(serverAddr, user)
+		client := client.NewClient(serverAddr, user)
 		defer client.Close()
 
 		if err := client.Register(password); err != nil {
