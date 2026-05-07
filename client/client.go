@@ -51,7 +51,7 @@ func (c *Client) Register(password string) error {
 	if err != nil {
 		return fmt.Errorf("marshal register request: %w", err)
 	}
-	resp, err := c.HTTPClient.Post(c.ServerAddr+"/user", "application/json", bytes.NewReader(payload))
+	resp, err := c.HTTPClient.Post(c.ServerAddr+"/api/user", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("failed to register user: %w", err)
 	}
@@ -73,7 +73,7 @@ func (c *Client) Login(password string) error {
 	if err != nil {
 		return fmt.Errorf("marshal login request: %w", err)
 	}
-	resp, err := c.HTTPClient.Post(c.ServerAddr+"/auth/login", "application/json", bytes.NewReader(payload))
+	resp, err := c.HTTPClient.Post(c.ServerAddr+"/api/user/login", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("failed to login: %w", err)
 	}
@@ -128,9 +128,9 @@ func (c *Client) Connect() error {
 // SyncHistory fetches message history from the server since the given ID.
 // If since is 0, it fetches the most recent messages (up to a server-defined limit).
 func (c *Client) SyncHistory(since int) ([]Broadcast, error) {
-	endpoint := fmt.Sprintf("/sync?since=%d", since)
+	endpoint := fmt.Sprintf("/api/chat/sync?since=%d", since)
 	if since == 0 {
-		endpoint = "/sync?last=10" // fallback to get last 10 if since=0
+		endpoint = "/api/chat/sync?last=10" // fallback to get last 10 if since=0
 	}
 
 	resp, err := c.HTTPClient.Get(c.ServerAddr + endpoint)

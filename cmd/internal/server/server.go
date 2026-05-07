@@ -53,10 +53,10 @@ func NewWithPort(store *storage.Store, port int) *Server {
 }
 
 func (s *Server) setupRoutes() {
-	s.mux.HandleFunc("POST /user", s.handleRegister)
-	s.mux.HandleFunc("POST /auth/login", s.handleLogin)
+	s.mux.HandleFunc("POST /api/user", s.handleRegister)
+	s.mux.HandleFunc("POST /api/user/login", s.handleLogin)
 	s.mux.HandleFunc("GET /ws", s.hub.HandleWebSocket)
-	s.mux.HandleFunc("GET /sync", s.handleSync)
+	s.mux.HandleFunc("GET /api/chat/sync", s.handleSync)
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {

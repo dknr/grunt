@@ -157,7 +157,7 @@ func TestIntegrationAuthRegistration(t *testing.T) {
 	defer stopServer(t, serverInfo)
 
 	// Test registration with password
-	resp, err := http.Post(serverInfo.addr+"/user", "application/json",
+	resp, err := http.Post(serverInfo.addr+"/api/user", "application/json",
 		bytes.NewReader([]byte(`{"user":"authuser","password":"testpass123"}`)))
 	if err != nil {
 		t.Fatalf("Failed to register user: %v", err)
@@ -170,7 +170,7 @@ func TestIntegrationAuthRegistration(t *testing.T) {
 	}
 
 	// Verify user exists via login
-	loginResp, err := http.Post(serverInfo.addr+"/auth/login", "application/json",
+	loginResp, err := http.Post(serverInfo.addr+"/api/user/login", "application/json",
 		bytes.NewReader([]byte(`{"user":"authuser","password":"testpass123"}`)))
 	if err != nil {
 		t.Fatalf("Failed to login: %v", err)
@@ -202,7 +202,7 @@ func TestIntegrationAuthWrongPassword(t *testing.T) {
 	defer stopServer(t, serverInfo)
 
 	// Register a user
-	resp, err := http.Post(serverInfo.addr+"/user", "application/json",
+	resp, err := http.Post(serverInfo.addr+"/api/user", "application/json",
 		bytes.NewReader([]byte(`{"user":"wrongpassuser","password":"correctpass"}`)))
 	if err != nil {
 		t.Fatalf("Failed to register user: %v", err)
@@ -213,7 +213,7 @@ func TestIntegrationAuthWrongPassword(t *testing.T) {
 	}
 
 	// Try to login with wrong password
-	loginResp, err := http.Post(serverInfo.addr+"/auth/login", "application/json",
+	loginResp, err := http.Post(serverInfo.addr+"/api/user/login", "application/json",
 		bytes.NewReader([]byte(`{"user":"wrongpassuser","password":"wrongpass"}`)))
 	if err != nil {
 		t.Fatalf("Failed to attempt login: %v", err)
@@ -235,7 +235,7 @@ func TestIntegrationAuthTwoUsers(t *testing.T) {
 
 	// Register two users with password "password" (matching the GRUNT_LOGIN env var)
 	for _, user := range []string{"alice", "bob"} {
-		resp, err := http.Post(serverInfo.addr+"/user", "application/json",
+		resp, err := http.Post(serverInfo.addr+"/api/user", "application/json",
 			bytes.NewReader([]byte(fmt.Sprintf(`{"user":"%s","password":"password"}`, user))))
 		if err != nil {
 			t.Fatalf("Failed to register %s: %v", user, err)
