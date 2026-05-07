@@ -13,7 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"grunt/client"
-	"grunt/cmd/internal/storage"
+	"grunt/server/storage"
 )
 
 type Server struct {
@@ -23,11 +23,13 @@ type Server struct {
 	httpSrv  *http.Server
 }
 
-func New(store *storage.Store) *Server {
-	return NewWithPort(store, 54765)
-}
+func NewWithPort(dbPath string, port int) *Server {
+	store, err := storage.New(dbPath)
+	if err != nil {
+		slog.Error("Failed to create storage", "error", err)
+		os.Exit(1)
+	}
 
-func NewWithPort(store *storage.Store, port int) *Server {
 	hub := NewHub(store)
 
 	s := &Server{
@@ -179,6 +181,4 @@ func (s *Server) SendSyncResponse(conn *websocket.Conn, msgs []client.Broadcast)
 		return err
 	}
 	return conn.WriteMessage(websocket.TextMessage, data)
-}
-
 }

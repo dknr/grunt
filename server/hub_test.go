@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"grunt/cmd/internal/storage"
+	"grunt/server/storage"
 )
 
 func newTestHub(t *testing.T) *Hub {

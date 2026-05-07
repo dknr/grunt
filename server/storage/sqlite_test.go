@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"grunt"
+	"grunt/client"
 )
 
 func newTestStore(t *testing.T) *Store {

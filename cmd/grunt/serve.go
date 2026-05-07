@@ -7,8 +7,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"grunt/cmd/internal/server"
-	"grunt/cmd/internal/storage"
+	"grunt/server"
 )
 
 func init() {
@@ -39,15 +38,8 @@ var serveCmd = &cobra.Command{
 			dbPath = args[0]
 		}
 
-		store, err := storage.New(dbPath)
-		if err != nil {
-			slog.Error("Failed to create storage", "error", err)
-			os.Exit(1)
-		}
-		defer store.Close()
-
 		port, _ := cmd.Flags().GetInt("port")
-srv := server.NewWithPort(store, port)
+		srv := server.NewWithPort(dbPath, port)
 
 		if err := srv.Serve(); err != nil && err != http.ErrServerClosed {
 			slog.Error("Server failed", "error", err)

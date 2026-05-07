@@ -10,7 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/matoous/go-nanoid/v2"
 	"grunt/client"
-	"grunt/cmd/internal/storage"
+	"grunt/server/storage"
 )
 
 var upgrader = websocket.Upgrader{
