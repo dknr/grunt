@@ -92,7 +92,7 @@ func TestSaveMessage(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	msg := &grunt.Broadcast{
+	msg := &client.Broadcast{
 		Content:  "Hello, World!",
 		ClientID: "client123",
 		UserID:   "testuser",
@@ -142,7 +142,7 @@ func TestSyncMessages(t *testing.T) {
 
 	// Save multiple messages
 	for i := 1; i <= 5; i++ {
-		msg := &grunt.Broadcast{
+		msg := &client.Broadcast{
 			Content:  "Message " + string(rune('0'+i)),
 			ClientID: "client123",
 			UserID:   "testuser",

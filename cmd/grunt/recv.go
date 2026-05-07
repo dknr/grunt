@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"grunt"
+	"grunt/client"
 )
 
 var (
@@ -35,29 +35,29 @@ var recvCmd = &cobra.Command{
 			serverAddr = "http://localhost:54765"
 		}
 
-		client := grunt.NewClient(serverAddr, user)
-		defer client.Close()
+		c := client.NewClient(serverAddr, user)
+		defer c.Close()
 
-		if err := client.Register(password); err != nil {
+		if err := c.Register(password); err != nil {
 			log.Fatalf("Failed to register: %v", err)
 		}
 
-		if err := client.Login(password); err != nil {
+		if err := c.Login(password); err != nil {
 			log.Fatalf("Failed to login: %v", err)
 		}
 
-		if err := client.Connect(); err != nil {
+		if err := c.Connect(); err != nil {
 			log.Fatalf("Failed to connect: %v", err)
 		}
 
 		// Start listening for messages BEFORE fetching sync to avoid race condition
-		messages := client.StartListening()
+		messages := c.StartListening()
 		if messages == nil {
 			log.Fatalf("Failed to start listening for messages")
 		}
 
 		// Fetch sync history
-		syncMsgs, err := client.SyncHistory(0) // 0 means get recent messages
+		syncMsgs, err := c.SyncHistory(0) // 0 means get recent messages
 		if err != nil {
 			log.Printf("Error fetching sync: %v", err)
 			// Continue anyway - we can still listen for live messages
@@ -80,19 +80,19 @@ var recvCmd = &cobra.Command{
 
 			switch envelope.Type {
 			case "message":
-				var broadcast grunt.Broadcast
+				var broadcast client.Broadcast
 				if err := json.Unmarshal(msgBytes, &broadcast); err == nil && broadcast.ID != 0 {
 					fmt.Printf("[%s] %s: %s\n", broadcast.UserID, broadcast.Timestamp.Format("15:04:05"), broadcast.Content)
 				}
 			case "event":
-				var evt grunt.Event
+				var evt client.Event
 				if err := json.Unmarshal(msgBytes, &evt); err == nil && evt.Event != "" {
 					if verbose {
 						fmt.Printf("[System] %s: %s\n", evt.Event, evt.ClientID)
 					}
 				}
 			case "error":
-				var serr grunt.Error
+				var serr client.Error
 				if err := json.Unmarshal(msgBytes, &serr); err == nil && serr.Message != "" {
 					fmt.Printf("[Error] %s\n", serr.Message)
 				}

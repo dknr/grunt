@@ -10,7 +10,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
-	"grunt"
+	"grunt/client"
 )
 
 type Store struct {
@@ -80,7 +80,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) Save(msg *grunt.Broadcast) (int64, error) {
+func (s *Store) Save(msg *client.Broadcast) (int64, error) {
 	res, err := s.db.Exec(
 		"INSERT INTO messages (content, client_id, user, timestamp) VALUES (?, ?, ?, ?)",
 		msg.Content, msg.ClientID, msg.UserID, msg.Timestamp,
@@ -91,7 +91,7 @@ func (s *Store) Save(msg *grunt.Broadcast) (int64, error) {
 	return res.LastInsertId()
 }
 
-func (s *Store) Sync(since int, limit int) ([]grunt.Broadcast, error) {
+func (s *Store) Sync(since int, limit int) ([]client.Broadcast, error) {
 	var query string
 	var args []interface{}
 
@@ -109,9 +109,9 @@ func (s *Store) Sync(since int, limit int) ([]grunt.Broadcast, error) {
 	}
 	defer rows.Close()
 
-	var msgs []grunt.Broadcast
+	var msgs []client.Broadcast
 	for rows.Next() {
-		var m grunt.Broadcast
+		var m client.Broadcast
 		var ts string
 		if err := rows.Scan(&m.ID, &m.Content, &m.ClientID, &m.UserID, &ts); err != nil {
 			return nil, err

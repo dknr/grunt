@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grunt Chat</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; background-color: #f9f9f9; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .hidden { display: none; }
+        input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; margin-bottom: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #0056b3; }
+        #messages { height: 400px; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; background: #fff; }
+        .msg { margin-bottom: 8px; word-wrap: break-word; }
+        .msg strong { color: #007bff; }
+        .system { color: #888; font-style: italic; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Auth View -->
+        <div id="auth-view">
+            <h2 style="text-align: center; margin-bottom: 20px;">Grunt</h2>
+            <form id="auth-form" method="POST">
+                <input type="text" name="user" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <input type="text" name="invite" placeholder="Invite Code (Optional)">
+                <button type="button" onclick="setAction('/login')">Login</button>
+                <button type="button" onclick="setAction('/register')">Register</button>
+            </form>
+            <p id="error-msg" style="color: red; text-align: center;" class="hidden"></p>
+        </div>
+
+        <!-- Chat View -->
+        <div id="chat-view" class="hidden">
+            <div id="messages"></div>
+            <form id="chat-form" style="display: flex; gap: 10px;">
+                <input type="text" id="msg-input" placeholder="Type a message..." style="margin-bottom: 0;" required>
+                <button type="submit" style="width: auto; margin-bottom: 0;">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const authView = document.getElementById('auth-view');
+        const chatView = document.getElementById('chat-view');
+        const form = document.getElementById('auth-form');
+        const errorMsg = document.getElementById('error-msg');
+        const messagesDiv = document.getElementById('messages');
+        const chatForm = document.getElementById('chat-form');
+        const msgInput = document.getElementById('msg-input');
+
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+        }
+
+        function setAction(action) {
+            form.action = action;
+            form.submit();
+        }
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.classList.remove('hidden');
+        }
+
+        // Check for existing session
+        if (getCookie('session')) {
+            authView.classList.add('hidden');
+            chatView.classList.remove('hidden');
+            connectChat();
+        }
+
+        function connectChat() {
+            const token = getCookie('session');
+            if (!token) return;
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+            const ws = new WebSocket(wsUrl);
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'message') {
+                        const div = document.createElement('div');
+                        div.className = 'msg';
+                        div.innerHTML = `<strong>${escapeHtml(data.user)}:</strong> ${escapeHtml(data.content)}`;
+                        messagesDiv.appendChild(div);
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    } else if (data.type === 'event') {
+                        const div = document.createElement('div');
+                        div.className = 'system';
+                        div.textContent = `[System] ${escapeHtml(data.user)} ${data.event}`;
+                        messagesDiv.appendChild(div);
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    }
+                } catch (e) {
+                    console.error('Failed to parse message', e);
+                }
+            };
+
+            chatForm.onsubmit = (e) => {
+                e.preventDefault();
+                if (msgInput.value.trim()) {
+                    ws.send(JSON.stringify({ content: msgInput.value }));
+                    msgInput.value = '';
+                }
+            };
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

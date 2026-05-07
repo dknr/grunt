@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -12,9 +13,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"grunt"
+	"grunt/client"
 	"grunt/cmd/internal/storage"
 )
+
+//go:embed chat.html
+var chatHTML embed.FS
 
 type Server struct {
 	hub      *Hub
@@ -57,6 +61,9 @@ func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("POST /auth/login", s.handleLogin)
 	s.mux.HandleFunc("GET /ws", s.hub.HandleWebSocket)
 	s.mux.HandleFunc("GET /sync", s.handleSync)
+	s.mux.HandleFunc("GET /chat", s.serveChat)
+	s.mux.HandleFunc("POST /login", s.handleWebLogin)
+	s.mux.HandleFunc("POST /register", s.handleWebRegister)
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -173,10 +180,100 @@ func (s *Server) Serve() error {
 }
 
 // SendSyncResponse sends a sync response to a websocket client
-func (s *Server) SendSyncResponse(conn *websocket.Conn, msgs []grunt.Broadcast) error {
+func (s *Server) SendSyncResponse(conn *websocket.Conn, msgs []client.Broadcast) error {
 	data, err := json.Marshal(msgs)
 	if err != nil {
 		return err
 	}
 	return conn.WriteMessage(websocket.TextMessage, data)
+}
+
+func (s *Server) serveChat(w http.ResponseWriter, r *http.Request) {
+	html, err := chatHTML.ReadFile("chat.html")
+	if err != nil {
+		slog.Error("Failed to read chat.html", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(html)
+}
+
+func (s *Server) handleWebLogin(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	user := r.FormValue("user")
+	password := r.FormValue("password")
+
+	if user == "" || password == "" {
+		http.Error(w, "Missing fields", http.StatusBadRequest)
+		return
+	}
+
+	ok, err := s.store.VerifyUser(user, password)
+	if err != nil {
+		slog.Error("Error verifying user", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	if !ok {
+		slog.Warn("Failed web login attempt", "user", user)
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := s.hub.GenerateToken(user)
+	if err != nil {
+		slog.Error("Error generating token", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   86400, // 24 hours
+	})
+
+	slog.Info("User logged in via web", "user", user)
+	http.Redirect(w, r, "/chat", http.StatusSeeOther)
+}
+
+func (s *Server) handleWebRegister(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	user := r.FormValue("user")
+	password := r.FormValue("password")
+	// invite code is ignored for now
+
+	if user == "" || password == "" {
+		http.Error(w, "Missing fields", http.StatusBadRequest)
+		return
+	}
+
+	err := s.store.CreateUser(user, password)
+	if err != nil {
+		slog.Error("Error creating user", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	token, err := s.hub.GenerateToken(user)
+	if err != nil {
+		slog.Error("Error generating token", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   86400, // 24 hours
+	})
+
+	slog.Info("User registered via web", "user", user)
+	http.Redirect(w, r, "/chat", http.StatusSeeOther)
 }

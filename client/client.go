@@ -1,6 +1,7 @@
-package grunt
+package client
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -43,8 +44,14 @@ func NewClient(serverAddr, userID string) *Client {
 
 // Register registers the user with the grunt server.
 func (c *Client) Register(password string) error {
-	payload := fmt.Sprintf(`{"user":"%s","password":"%s"}`, c.UserID, password)
-	resp, err := c.HTTPClient.Post(c.ServerAddr+"/user", "application/json", strings.NewReader(payload))
+	payload, err := json.Marshal(map[string]string{
+		"user":     c.UserID,
+		"password": password,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal register request: %w", err)
+	}
+	resp, err := c.HTTPClient.Post(c.ServerAddr+"/user", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("failed to register user: %w", err)
 	}
@@ -59,8 +66,14 @@ func (c *Client) Register(password string) error {
 
 // Login authenticates the user with the grunt server and stores the token.
 func (c *Client) Login(password string) error {
-	payload := fmt.Sprintf(`{"user":"%s","password":"%s"}`, c.UserID, password)
-	resp, err := c.HTTPClient.Post(c.ServerAddr+"/auth/login", "application/json", strings.NewReader(payload))
+	payload, err := json.Marshal(map[string]string{
+		"user":     c.UserID,
+		"password": password,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal login request: %w", err)
+	}
+	resp, err := c.HTTPClient.Post(c.ServerAddr+"/auth/login", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("failed to login: %w", err)
 	}
