@@ -11,6 +11,8 @@ import (
 	"grunt/client"
 )
 
+var inviteCode string
+
 var replCmd = &cobra.Command{
 	Use:   "repl",
 	Short: "Interactive REPL for sending messages to the grunt server",
@@ -26,6 +28,10 @@ var replCmd = &cobra.Command{
 		}
 		user, password := parts[0], parts[1]
 
+		if inviteCode == "" {
+			log.Fatal("--invite-code flag is required")
+		}
+
 		serverAddr, _ := cmd.Flags().GetString("server")
 		if serverAddr == "" {
 			serverAddr = "http://localhost:54765"
@@ -34,7 +40,7 @@ var replCmd = &cobra.Command{
 		client := client.NewClient(serverAddr, user)
 		defer client.Close()
 
-		if err := client.Register(password); err != nil {
+		if err := client.Register(password, inviteCode); err != nil {
 			log.Fatalf("Failed to register: %v", err)
 		}
 
@@ -85,5 +91,6 @@ var replCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(replCmd)
+	replCmd.Flags().StringVar(&inviteCode, "invite-code", "", "Invite code (required)")
 	replCmd.Flags().String("server", "http://localhost:54765", "Server address")
 }

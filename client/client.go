@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -43,10 +44,11 @@ func NewClient(serverAddr, userID string) *Client {
 }
 
 // Register registers the user with the grunt server.
-func (c *Client) Register(password string) error {
+func (c *Client) Register(password, inviteCode string) error {
 	payload, err := json.Marshal(map[string]string{
-		"user":     c.UserID,
-		"password": password,
+		"user":       c.UserID,
+		"password":   password,
+		"invite_code": inviteCode,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal register request: %w", err)
@@ -62,6 +64,42 @@ func (c *Client) Register(password string) error {
 	}
 
 	return nil
+}
+
+// Invite generates a new invite code using the current token.
+func (c *Client) Invite() (string, time.Time, error) {
+	req, err := http.NewRequest(http.MethodGet, c.ServerAddr+"/api/user/invite", nil)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to create invite request: %w", err)
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to get invite: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", time.Time{}, fmt.Errorf("failed to get invite: %s", resp.Status)
+	}
+
+	var result struct {
+		Code      string `json:"code"`
+		ExpiresAt string `json:"expires_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to decode invite response: %w", err)
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, result.ExpiresAt)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to parse expires_at: %w", err)
+	}
+
+	return result.Code, expiresAt, nil
 }
 
 // Login authenticates the user with the grunt server and stores the token.

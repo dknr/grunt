@@ -1,9 +1,12 @@
 package server
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"grunt/server/storage"
 )
@@ -27,17 +30,74 @@ func (a *apiImpl) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"user and password are required"}`, http.StatusBadRequest)
 		return
 	}
-	if err := a.store.CreateUser(req.User, req.Password); err != nil {
-		slog.Error("Error creating user", "error", err)
-		http.Error(w, `{"error":"failed to create user"}`, http.StatusInternalServerError)
+
+	// Validate invite code (required for all registrations)
+	valid, err := a.store.ValidateInvite(req.InviteCode)
+	if err != nil {
+		slog.Error("Error validating invite", "error", err)
+		http.Error(w, `{"error":"failed to validate invite code"}`, http.StatusInternalServerError)
 		return
 	}
+	if !valid {
+		slog.Warn("Registration attempt with invalid invite", "user", req.User)
+		http.Error(w, `{"error":"invalid or expired invite code"}`, http.StatusUnauthorized)
+		return
+	}
+
+	if err := a.store.CreateUser(req.User, req.Password); err != nil {
+		// Check if user already exists (409 Conflict)
+		slog.Warn("User already registered", "user", req.User)
+		w.WriteHeader(http.StatusConflict)
+		msg := MessageResponse{
+			Message: strPtr("user already exists"),
+		}
+		json.NewEncoder(w).Encode(msg)
+		return
+	}
+
+	// Mark invite as used
+	if err := a.store.MarkInviteUsed(req.InviteCode, req.User); err != nil {
+		slog.Error("Error marking invite as used", "error", err)
+		// Don't fail registration if invite marking fails
+	}
+
 	slog.Info("User registered", "user", req.User)
 	w.WriteHeader(http.StatusCreated)
 	msg := MessageResponse{
 		Message: strPtr("user created"),
 	}
 	json.NewEncoder(w).Encode(msg)
+}
+
+// GetInvite implements the invite generation endpoint.
+func (a *apiImpl) GetInvite(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context (set by AuthMiddleware)
+	userID := r.Context().Value(userIDKey).(string)
+
+	// Generate new invite code
+	code := generateInviteCode()
+	expiresAt := time.Now().Add(10 * time.Minute)
+
+	if err := a.store.CreateInvite(code, expiresAt, userID); err != nil {
+		slog.Error("Error creating invite", "error", err)
+		http.Error(w, `{"error":"failed to create invite code"}`, http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("Invite code generated", "user", userID)
+	resp := InviteResponse{
+		Code:      strPtr(code),
+		ExpiresAt: &expiresAt,
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
+}
+
+// generateInviteCode generates a random invite code.
+func generateInviteCode() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // LoginUser implements the login endpoint.

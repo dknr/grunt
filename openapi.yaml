@@ -31,6 +31,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid or expired invite code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/user/invite:
+    get:
+      summary: Generate a new invite code
+      operationId: getInvite
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Invite code generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Internal server error
           content:
@@ -118,12 +150,18 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     RegisterRequest:
       type: object
       required:
         - user
         - password
+        - invite_code
       properties:
         user:
           type: string
@@ -133,6 +171,23 @@ components:
           type: string
           description: Password
           example: secret123
+        invite_code:
+          type: string
+          description: Invite code (required for registration)
+          example: abc123
+
+    InviteResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Invite code
+          example: abc123
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiration time
+          example: 2026-05-07T00:10:00Z
 
     LoginRequest:
       type: object

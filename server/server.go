@@ -30,6 +30,22 @@ func NewWithPort(dbPath string, port int) *Server {
 		os.Exit(1)
 	}
 
+	// Cold-start: if no users exist, generate an initial invite code
+	count, err := store.CreateUserCount()
+	if err != nil {
+		slog.Error("Failed to count users", "error", err)
+		os.Exit(1)
+	}
+	if count == 0 {
+		code := generateInviteCode()
+		expiresAt := time.Now().Add(10 * time.Minute)
+		if err := store.CreateInvite(code, expiresAt, ""); err != nil {
+			slog.Error("Failed to create initial invite", "error", err)
+			os.Exit(1)
+		}
+		slog.Warn("Initial invite code generated (no users exist yet)", "invite_code", code, "expires_at", expiresAt.Format(time.RFC3339))
+	}
+
 	hub := NewHub(store)
 	apiImpl := &apiImpl{store: store, hub: hub}
 

@@ -25,6 +25,11 @@ var sendCmd = &cobra.Command{
 		}
 		user, password := parts[0], parts[1]
 
+		inviteCode, _ := cmd.Flags().GetString("invite-code")
+		if inviteCode == "" {
+			log.Fatal("--invite-code flag is required")
+		}
+
 		msgText := args[0]
 		serverAddr, _ := cmd.Flags().GetString("server")
 		if serverAddr == "" {
@@ -34,8 +39,14 @@ var sendCmd = &cobra.Command{
 		client := client.NewClient(serverAddr, user)
 		defer client.Close()
 
-		if err := client.Register(password); err != nil {
-			log.Fatalf("Failed to register: %v", err)
+		if err := client.Register(password, inviteCode); err != nil {
+			if strings.Contains(err.Error(), "409") {
+				log.Print("User already registered")
+			} else {
+				log.Fatalf("Failed to register: %v", err)
+			}
+		} else {
+			log.Print("Registration successful")
 		}
 
 		if err := client.Login(password); err != nil {
@@ -57,4 +68,5 @@ var sendCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(sendCmd)
 	sendCmd.Flags().String("server", "http://localhost:54765", "Server address")
+	sendCmd.Flags().String("invite-code", "", "Invite code (required)")
 }

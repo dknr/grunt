@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -50,11 +51,12 @@ func buildBinary(t *testing.T) string {
 }
 
 type serverInfo struct {
-	cmd        *exec.Cmd
-	addr       string
-	dbPath     string
-	stdout     *bytes.Buffer
-	stderr     *bytes.Buffer
+	cmd           *exec.Cmd
+	addr          string
+	dbPath        string
+	stdout        *bytes.Buffer
+	stderr        *bytes.Buffer
+	initialInvite string
 }
 
 func startServer(t *testing.T, binPath string, port int) *serverInfo {
@@ -77,16 +79,99 @@ func startServer(t *testing.T, binPath string, port int) *serverInfo {
 		t.Fatalf("Failed to start server: %v", err)
 	}
 
-	// Wait for server to be ready
-	time.Sleep(500 * time.Millisecond)
+	// Wait for server to be ready and extract initial invite code
+	var initialInvite string
+	timeout := time.After(5 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			t.Fatalf("Server did not generate initial invite code within timeout.\nServer stdout:\n%s\nServer stderr:\n%s", stdout.String(), stderr.String())
+		case <-ticker.C:
+			initialInvite = extractInviteCode(stdout.String())
+			if initialInvite == "" {
+				initialInvite = extractInviteCode(stderr.String())
+			}
+			if initialInvite != "" {
+				goto done
+			}
+		}
+	}
+done:
 
 	return &serverInfo{
-		cmd:    serverCmd,
-		addr:   serverAddr,
-		dbPath: dbPath,
-		stdout: stdout,
-		stderr: stderr,
+		cmd:           serverCmd,
+		addr:          serverAddr,
+		dbPath:        dbPath,
+		stdout:        stdout,
+		stderr:        stderr,
+		initialInvite: initialInvite,
 	}
+}
+
+// extractInviteCode searches server output for the initial invite code.
+func extractInviteCode(output string) string {
+	re := regexp.MustCompile(`invite_code=([a-f0-9]+)`)
+	matches := re.FindStringSubmatch(output)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+// getInviteCode makes an authenticated request to generate a new invite code.
+func getInviteCode(t *testing.T, serverAddr, token string) string {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, serverAddr+"/api/user/invite", nil)
+	if err != nil {
+		t.Fatalf("Failed to create invite request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to get invite: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("Failed to decode invite response: %v", err)
+	}
+	return result.Code
+}
+
+// loginAndGetToken authenticates a user and returns the token.
+func loginAndGetToken(t *testing.T, serverAddr, user, password string) string {
+	t.Helper()
+	resp, err := http.Post(serverAddr+"/api/user/login", "application/json",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"user":"%s","password":"%s"}`, user, password))))
+	if err != nil {
+		t.Fatalf("Failed to login: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("Failed to decode login response: %v", err)
+	}
+	return result.Token
 }
 
 func stopServer(t *testing.T, info *serverInfo) {
@@ -102,22 +187,50 @@ func TestIntegrationMessageFlow(t *testing.T) {
 	port := getFreePort(t)
 	serverInfo := startServer(t, binPath, port)
 
-	// Start recv subprocess (long-running)
-	recvCmd := exec.Command(binPath, "recv", "--server", serverInfo.addr)
-	recvCmd.Env = append(os.Environ(), "GRUNT_LOGIN=testuser:password")
+	// Register first user (alice) with initial invite code
+	resp, err := http.Post(serverInfo.addr+"/api/user", "application/json",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"user":"alice","password":"password","invite_code":"%s"}`, serverInfo.initialInvite))))
+	if err != nil {
+		t.Fatalf("Failed to register alice: %v", err)
+	}
+	resp.Body.Close()
+
+	// Login as alice to get a token for generating new invites
+	token := loginAndGetToken(t, serverInfo.addr, "alice", "password")
+
+	// Generate invite codes for bob's recv and send subprocesses
+	bobRecvInvite := getInviteCode(t, serverInfo.addr, token)
+	bobSendInvite := getInviteCode(t, serverInfo.addr, token)
+
+	t.Logf("Generated bobRecvInvite: %s, bobSendInvite: %s", bobRecvInvite, bobSendInvite)
+
+	// Register bob with recv invite code
+	resp, err = http.Post(serverInfo.addr+"/api/user", "application/json",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"user":"bob","password":"password","invite_code":"%s"}`, bobRecvInvite))))
+	if err != nil {
+		t.Fatalf("Failed to register bob: %v", err)
+	}
+	resp.Body.Close()
+
+	// Start bob's recv subprocess (long-running)
+	recvCmd := exec.Command(binPath, "recv", "--server", serverInfo.addr, "--invite-code", bobSendInvite)
+	recvCmd.Env = append(os.Environ(), "GRUNT_LOGIN=bob:password")
 	var recvStdout, recvStderr bytes.Buffer
 	recvCmd.Stdout = &recvStdout
 	recvCmd.Stderr = &recvStderr
 	if err := recvCmd.Start(); err != nil {
-		t.Fatalf("Failed to start recv: %v", err)
+		t.Fatalf("Failed to start recv for bob: %v", err)
 	}
 
-	// Wait for recv to connect
+	// Wait for bob to connect
 	time.Sleep(200 * time.Millisecond)
 
-	// Send a message
-	sendCmd := exec.Command(binPath, "send", "--server", serverInfo.addr, "Hello from integration test!")
-	sendCmd.Env = append(os.Environ(), "GRUNT_LOGIN=testuser:password")
+	// Login as alice and generate a new invite for send
+	aliceSendInvite := getInviteCode(t, serverInfo.addr, token)
+
+	// Send a message from alice to bob
+	sendCmd := exec.Command(binPath, "send", "--server", serverInfo.addr, "--invite-code", aliceSendInvite, "Hello from alice to bob!")
+	sendCmd.Env = append(os.Environ(), "GRUNT_LOGIN=alice:password")
 	var sendStdout, sendStderr bytes.Buffer
 	sendCmd.Stdout = &sendStdout
 	sendCmd.Stderr = &sendStderr
@@ -125,10 +238,10 @@ func TestIntegrationMessageFlow(t *testing.T) {
 		t.Logf("Send command output: %s\n%s", sendStdout.String(), sendStderr.String())
 	}
 
-	// Wait for recv to process the message
+	// Wait for bob to process the message
 	time.Sleep(500 * time.Millisecond)
 
-	// Force kill recv (it runs indefinitely)
+	// Force kill bob's recv (it runs indefinitely)
 	recvCmd.Process.Kill()
 	recvCmd.Wait()
 
@@ -143,8 +256,8 @@ func TestIntegrationMessageFlow(t *testing.T) {
 			serverOutput, serverInfo.stderr.String())
 	}
 
-	if !strings.Contains(recvOutput, "Hello from integration test!") {
-		t.Errorf("recv did not receive the message.\nrecv stdout:\n%s\nrecv stderr:\n%s", recvOutput, recvStderr.String())
+	if !strings.Contains(recvOutput, "Hello from alice to bob!") {
+		t.Errorf("Bob did not receive alice's message.\nrecv stdout:\n%s\nrecv stderr:\n%s", recvOutput, recvStderr.String())
 	}
 }
 
@@ -156,9 +269,9 @@ func TestIntegrationAuthRegistration(t *testing.T) {
 	serverInfo := startServer(t, binPath, port)
 	defer stopServer(t, serverInfo)
 
-	// Test registration with password
+	// Test registration with invite code
 	resp, err := http.Post(serverInfo.addr+"/api/user", "application/json",
-		bytes.NewReader([]byte(`{"user":"authuser","password":"testpass123"}`)))
+		bytes.NewReader([]byte(fmt.Sprintf(`{"user":"authuser","password":"testpass123","invite_code":"%s"}`, serverInfo.initialInvite))))
 	if err != nil {
 		t.Fatalf("Failed to register user: %v", err)
 	}
@@ -171,7 +284,7 @@ func TestIntegrationAuthRegistration(t *testing.T) {
 
 	// Verify user exists via login
 	loginResp, err := http.Post(serverInfo.addr+"/api/user/login", "application/json",
-		bytes.NewReader([]byte(`{"user":"authuser","password":"testpass123"}`)))
+		bytes.NewReader([]byte(fmt.Sprintf(`{"user":"authuser","password":"testpass123","invite_code":"%s"}`, serverInfo.initialInvite))))
 	if err != nil {
 		t.Fatalf("Failed to login: %v", err)
 	}
@@ -201,9 +314,9 @@ func TestIntegrationAuthWrongPassword(t *testing.T) {
 	serverInfo := startServer(t, binPath, port)
 	defer stopServer(t, serverInfo)
 
-	// Register a user
+	// Register a user with invite code
 	resp, err := http.Post(serverInfo.addr+"/api/user", "application/json",
-		bytes.NewReader([]byte(`{"user":"wrongpassuser","password":"correctpass"}`)))
+		bytes.NewReader([]byte(fmt.Sprintf(`{"user":"wrongpassuser","password":"correctpass","invite_code":"%s"}`, serverInfo.initialInvite))))
 	if err != nil {
 		t.Fatalf("Failed to register user: %v", err)
 	}
@@ -233,18 +346,39 @@ func TestIntegrationAuthTwoUsers(t *testing.T) {
 	port := getFreePort(t)
 	serverInfo := startServer(t, binPath, port)
 
-	// Register two users with password "password" (matching the GRUNT_LOGIN env var)
-	for _, user := range []string{"alice", "bob"} {
-		resp, err := http.Post(serverInfo.addr+"/api/user", "application/json",
-			bytes.NewReader([]byte(fmt.Sprintf(`{"user":"%s","password":"password"}`, user))))
-		if err != nil {
-			t.Fatalf("Failed to register %s: %v", user, err)
-		}
-		resp.Body.Close()
+	// Register first user (alice) with initial invite code
+	resp, err := http.Post(serverInfo.addr+"/api/user", "application/json",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"user":"alice","password":"password","invite_code":"%s"}`, serverInfo.initialInvite))))
+	if err != nil {
+		t.Fatalf("Failed to register alice: %v", err)
 	}
+	resp.Body.Close()
 
-	// Start recv for alice
-	recvCmd := exec.Command(binPath, "recv", "--server", serverInfo.addr)
+	// Login as alice to get a token
+	aliceToken := loginAndGetToken(t, serverInfo.addr, "alice", "password")
+
+	// Generate invite codes: one for alice's recv, one for bob's registration
+	aliceRecvInvite := getInviteCode(t, serverInfo.addr, aliceToken)
+	bobInvite := getInviteCode(t, serverInfo.addr, aliceToken)
+
+	t.Logf("Generated aliceRecvInvite: %s, bobInvite: %s", aliceRecvInvite, bobInvite)
+
+	// Register bob with the invite code
+	resp, err = http.Post(serverInfo.addr+"/api/user", "application/json",
+		bytes.NewReader([]byte(fmt.Sprintf(`{"user":"bob","password":"password","invite_code":"%s"}`, bobInvite))))
+	if err != nil {
+		t.Fatalf("Failed to register bob: %v", err)
+	}
+	resp.Body.Close()
+
+	// Login as bob to get a token and another invite for sending
+	bobToken := loginAndGetToken(t, serverInfo.addr, "bob", "password")
+	bobSendInvite := getInviteCode(t, serverInfo.addr, bobToken)
+
+	t.Logf("Generated bobSendInvite: %s", bobSendInvite)
+
+	// Start recv for alice (using a valid invite code)
+	recvCmd := exec.Command(binPath, "recv", "--server", serverInfo.addr, "--invite-code", aliceRecvInvite)
 	recvCmd.Env = append(os.Environ(), "GRUNT_LOGIN=alice:password")
 	var recvStdout, recvStderr bytes.Buffer
 	recvCmd.Stdout = &recvStdout
@@ -256,7 +390,7 @@ func TestIntegrationAuthTwoUsers(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Send message from bob
-	sendCmd := exec.Command(binPath, "send", "--server", serverInfo.addr, "Hello from bob to alice!")
+	sendCmd := exec.Command(binPath, "send", "--server", serverInfo.addr, "--invite-code", bobSendInvite, "Hello from bob to alice!")
 	sendCmd.Env = append(os.Environ(), "GRUNT_LOGIN=bob:password")
 	var sendStdout, sendStderr bytes.Buffer
 	sendCmd.Stdout = &sendStdout
@@ -275,6 +409,6 @@ func TestIntegrationAuthTwoUsers(t *testing.T) {
 
 	recvOutput := recvStdout.String()
 	if !strings.Contains(recvOutput, "Hello from bob to alice!") {
-		t.Errorf("Alice did not receive bob's message.\nrecv stdout:\n%s", recvOutput)
+		t.Errorf("Alice did not receive bob's message.\nrecv stdout:\n%s\nrecv stderr:\n%s", recvOutput, recvStderr.String())
 	}
 }

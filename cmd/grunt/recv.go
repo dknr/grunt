@@ -30,6 +30,11 @@ var recvCmd = &cobra.Command{
 		}
 		user, password := parts[0], parts[1]
 
+		inviteCode, _ := cmd.Flags().GetString("invite-code")
+		if inviteCode == "" {
+			log.Fatal("--invite-code flag is required")
+		}
+
 		serverAddr, _ := cmd.Flags().GetString("server")
 		if serverAddr == "" {
 			serverAddr = "http://localhost:54765"
@@ -38,8 +43,14 @@ var recvCmd = &cobra.Command{
 		c := client.NewClient(serverAddr, user)
 		defer c.Close()
 
-		if err := c.Register(password); err != nil {
-			log.Fatalf("Failed to register: %v", err)
+		if err := c.Register(password, inviteCode); err != nil {
+			if strings.Contains(err.Error(), "409") {
+				log.Print("User already registered")
+			} else {
+				log.Fatalf("Failed to register: %v", err)
+			}
+		} else {
+			log.Print("Registration successful")
 		}
 
 		if err := c.Login(password); err != nil {
@@ -107,4 +118,5 @@ func init() {
 	rootCmd.AddCommand(recvCmd)
 	recvCmd.Flags().String("server", "http://localhost:54765", "Server address")
 	recvCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show system messages")
+	recvCmd.Flags().String("invite-code", "", "Invite code (required)")
 }

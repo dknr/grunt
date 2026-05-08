@@ -52,6 +52,19 @@ func New(dsn string) (*Store, error) {
 		return nil, fmt.Errorf("create messages table: %w", err)
 	}
 
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS invites (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			code TEXT UNIQUE NOT NULL,
+			expires_at DATETIME NOT NULL,
+			created_by_user TEXT,
+			used_at DATETIME
+		)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("create invites table: %w", err)
+	}
+
 	return &Store{db: db}, nil
 }
 
@@ -78,6 +91,52 @@ func (s *Store) VerifyUser(user, password string) (bool, error) {
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+func (s *Store) CreateUserCount() (int, error) {
+	var count int
+	err := s.db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s *Store) CreateInvite(code string, expiresAt time.Time, createdBy string) error {
+	_, err := s.db.Exec(
+		"INSERT INTO invites (code, expires_at, created_by_user) VALUES (?, ?, ?)",
+		code, expiresAt.Format(time.RFC3339), createdBy,
+	)
+	return err
+}
+
+func (s *Store) ValidateInvite(code string) (bool, error) {
+	var expiresAt string
+	err := s.db.QueryRow(
+		"SELECT expires_at FROM invites WHERE code = ? AND used_at IS NULL",
+		code,
+	).Scan(&expiresAt)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	expTime, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return false, err
+	}
+
+	return time.Now().Before(expTime), nil
+}
+
+func (s *Store) MarkInviteUsed(code string, userId string) error {
+	_, err := s.db.Exec(
+		"UPDATE invites SET used_at = ?, created_by_user = ? WHERE code = ? AND used_at IS NULL",
+		time.Now().Format(time.RFC3339), userId, code,
+	)
+	return err
 }
 
 func (s *Store) Save(msg *client.Broadcast) (int64, error) {
