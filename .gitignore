@@ -19,3 +19,4 @@ server.json.log
 # OS
 .DS_Store
 Thumbs.db
+server/openapi.gen.go

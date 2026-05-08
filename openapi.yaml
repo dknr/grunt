@@ -1,0 +1,215 @@
+openapi: "3.0.3"
+info:
+  title: Grunt API
+  version: 0.2.0
+  description: Real-time messaging server API
+
+servers:
+  - url: http://localhost:54765
+
+paths:
+  /api/user:
+    post:
+      summary: Register a new user
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/user/login:
+    post:
+      summary: Authenticate and obtain a token
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/chat/sync:
+    get:
+      summary: Sync messages
+      operationId: syncMessages
+      parameters:
+        - name: since
+          in: query
+          description: Return messages with ID greater than this value
+          required: false
+          schema:
+            type: integer
+            format: int64
+            default: 0
+        - name: last
+          in: query
+          description: Maximum number of messages to return (used when since=0)
+          required: false
+          schema:
+            type: integer
+            format: int64
+            default: 0
+      responses:
+        '200':
+          description: Messages retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Broadcast'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - user
+        - password
+      properties:
+        user:
+          type: string
+          description: Username
+          example: alice
+        password:
+          type: string
+          description: Password
+          example: secret123
+
+    LoginRequest:
+      type: object
+      required:
+        - user
+        - password
+      properties:
+        user:
+          type: string
+          description: Username
+          example: alice
+        password:
+          type: string
+          description: Password
+          example: secret123
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Authentication token (valid for 24 hours)
+          example: abc123def456
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: user created
+
+    Broadcast:
+      type: object
+      properties:
+        type:
+          type: string
+          example: message
+        id:
+          type: integer
+          format: int64
+          example: 42
+        content:
+          type: string
+          example: Hello, world!
+        client_id:
+          type: string
+          example: abc123
+        user:
+          type: string
+          example: alice
+        timestamp:
+          type: string
+          format: date-time
+          example: 2026-05-07T00:00:00Z
+
+    Event:
+      type: object
+      properties:
+        type:
+          type: string
+          example: event
+        event:
+          type: string
+          enum:
+            - join
+            - leave
+          example: join
+        client_id:
+          type: string
+          example: abc123
+        user:
+          type: string
+          example: alice
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: invalid credentials

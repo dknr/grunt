@@ -10,11 +10,20 @@ LDFLAGS := -s -w \
 
 BINARY_NAME ?= grunt
 BUILD_DIR   ?= dist
+CODEGEN_BIN ?= oapi-codegen
 
-.PHONY: build clean test test-integration test-short version install build-all
+GOPATH_BIN ?= $(shell go env GOPATH)/bin
 
-build:
+.PHONY: build clean test test-integration test-short version install build-all codegen
+
+build: codegen
 	cd cmd && go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME) ./grunt
+
+codegen:
+	@if ! command -v oapi-codegen >/dev/null 2>&1; then \
+		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest; \
+	fi
+	$(GOPATH_BIN)/oapi-codegen -package server -generate std-http,types,spec -o server/openapi.gen.go openapi.yaml
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -39,7 +48,7 @@ version:
 install: build
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/$(BINARY_NAME)
 
-build-all: build
+build-all: codegen
 	cd cmd && GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./grunt
 	cd cmd && GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./grunt
 	cd cmd && GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o ../$(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./grunt

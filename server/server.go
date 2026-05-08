@@ -31,14 +31,18 @@ func NewWithPort(dbPath string, port int) *Server {
 	}
 
 	hub := NewHub(store)
+	apiImpl := &apiImpl{store: store, hub: hub}
+
+	mux := http.NewServeMux()
+	HandlerWithOptions(apiImpl, StdHTTPServerOptions{BaseRouter: mux})
 
 	s := &Server{
 		hub:   hub,
 		store: store,
-		mux:   http.NewServeMux(),
+		mux:   mux,
 	}
 
-	s.setupRoutes()
+	s.setupWebSocketRoute()
 
 	go hub.Run()
 
@@ -54,101 +58,8 @@ func NewWithPort(dbPath string, port int) *Server {
 	return s
 }
 
-func (s *Server) setupRoutes() {
-	s.mux.HandleFunc("POST /api/user", s.handleRegister)
-	s.mux.HandleFunc("POST /api/user/login", s.handleLogin)
+func (s *Server) setupWebSocketRoute() {
 	s.mux.HandleFunc("GET /ws", s.hub.HandleWebSocket)
-	s.mux.HandleFunc("GET /api/chat/sync", s.handleSync)
-}
-
-func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		User     string `json:"user"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		slog.Warn("Registration attempt", "user", req.User, "reason", "invalid request body")
-		http.Error(w, `{"error":"missing user or password field"}`, http.StatusBadRequest)
-		return
-	}
-	if req.User == "" || req.Password == "" {
-		slog.Warn("Registration attempt", "user", req.User, "reason", "missing fields")
-		http.Error(w, `{"error":"user and password are required"}`, http.StatusBadRequest)
-		return
-	}
-	if err := s.store.CreateUser(req.User, req.Password); err != nil {
-		slog.Error("Error creating user", "error", err)
-		http.Error(w, `{"error":"failed to create user"}`, http.StatusInternalServerError)
-		return
-	}
-	slog.Info("User registered", "user", req.User)
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "user created"})
-}
-
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		User     string `json:"user"`
-		Password string `json:"password"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"missing user or password field"}`, http.StatusBadRequest)
-		return
-	}
-	ok, err := s.store.VerifyUser(req.User, req.Password)
-	if err != nil {
-		slog.Error("Error verifying user", "error", err)
-		http.Error(w, `{"error":"failed to verify user"}`, http.StatusInternalServerError)
-		return
-	}
-	if !ok {
-		slog.Warn("Failed login attempt", "user", req.User)
-		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
-		return
-	}
-	token, err := s.hub.GenerateToken(req.User)
-	if err != nil {
-		slog.Error("Error generating token", "error", err)
-		http.Error(w, `{"error":"failed to generate token"}`, http.StatusInternalServerError)
-		return
-	}
-	slog.Info("User logged in", "user", req.User)
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
-}
-
-func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
-	sinceStr := r.URL.Query().Get("since")
-	since := 0
-	if sinceStr != "" {
-		var err error
-		since, err = strconv.Atoi(sinceStr)
-		if err != nil {
-			http.Error(w, `{"error":"invalid since parameter"}`, http.StatusBadRequest)
-			return
-		}
-	}
-
-	lastStr := r.URL.Query().Get("last")
-	last := 0
-	if lastStr != "" {
-		var err error
-		last, err = strconv.Atoi(lastStr)
-		if err != nil {
-			http.Error(w, `{"error":"invalid last parameter"}`, http.StatusBadRequest)
-			return
-		}
-	}
-
-	msgs, err := s.store.Sync(since, last)
-	if err != nil {
-		slog.Error("Error syncing messages", "error", err)
-		http.Error(w, `{"error":"failed to sync messages"}`, http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(msgs)
 }
 
 func (s *Server) Serve() error {
