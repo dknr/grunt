@@ -42,14 +42,14 @@ func NewWithPort(dbPath string, port int) *Server {
 		mux:   mux,
 	}
 
-	s.setupWebSocketRoute()
+	s.setupRoutes()
 
 	go hub.Run()
 
 	// Setup HTTP server for graceful shutdown
 	s.httpSrv = &http.Server{
 		Addr:         ":" + strconv.Itoa(port),
-		Handler:      s.mux,
+		Handler:      authMiddleware(s.mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -58,7 +58,7 @@ func NewWithPort(dbPath string, port int) *Server {
 	return s
 }
 
-func (s *Server) setupWebSocketRoute() {
+func (s *Server) setupRoutes() {
 	s.mux.HandleFunc("GET /ws", s.hub.HandleWebSocket)
 }
 

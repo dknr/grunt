@@ -96,7 +96,7 @@ func (c *Client) Login(password string) error {
 
 // Connect establishes a WebSocket connection to the grunt server.
 // Message listening is not started automatically; use StartListening() to begin.
-// Uses the stored token for authentication.
+// Uses the stored token for authentication via Authorization: Bearer header.
 func (c *Client) Connect() error {
 	c.mutex.Lock()
 	if c.connected {
@@ -105,14 +105,16 @@ func (c *Client) Connect() error {
 	}
 	c.mutex.Unlock()
 
-	var wsURL string
-	if c.Token != "" {
-		wsURL = strings.Replace(c.ServerAddr, "http", "ws", 1) + "/ws?token=" + c.Token
-	} else {
-		wsURL = strings.Replace(c.ServerAddr, "http", "ws", 1) + "/ws?user=" + c.UserID
+	if c.Token == "" {
+		return fmt.Errorf("no token available; call Login() first")
 	}
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	wsURL := strings.Replace(c.ServerAddr, "http", "ws", 1) + "/ws"
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+c.Token)
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
 	if err != nil {
 		return fmt.Errorf("failed to connect to websocket: %w", err)
 	}
@@ -127,13 +129,22 @@ func (c *Client) Connect() error {
 
 // SyncHistory fetches message history from the server since the given ID.
 // If since is 0, it fetches the most recent messages (up to a server-defined limit).
+// Requires authentication via the stored token.
 func (c *Client) SyncHistory(since int) ([]Broadcast, error) {
 	endpoint := fmt.Sprintf("/api/chat/sync?since=%d", since)
 	if since == 0 {
 		endpoint = "/api/chat/sync?last=10" // fallback to get last 10 if since=0
 	}
 
-	resp, err := c.HTTPClient.Get(c.ServerAddr + endpoint)
+	req, err := http.NewRequest(http.MethodGet, c.ServerAddr+endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sync request: %w", err)
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch sync history: %w", err)
 	}

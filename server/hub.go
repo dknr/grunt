@@ -246,20 +246,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		slog.Warn("WebSocket connection rejected", "reason", "missing token")
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"missing token"}`))
-		conn.Close()
-		return
-	}
-
-	userID, ok := ValidateToken(token)
-	if !ok {
-		slog.Warn("WebSocket connection rejected", "reason", "invalid or expired token")
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"invalid or expired token"}`))
+	userID := UserIDFromContext(r)
+	if userID == "" {
+		slog.Warn("WebSocket connection rejected", "reason", "no user in context")
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		conn.Close()
 		return
 	}
