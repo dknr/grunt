@@ -54,8 +54,8 @@ type serverInfo struct {
 	cmd           *exec.Cmd
 	addr          string
 	dbPath        string
-	stdout        *bytes.Buffer
-	stderr        *bytes.Buffer
+	stdout        string // path to file containing stdout
+	stderr        string // path to file containing stderr
 	initialInvite string
 }
 
@@ -70,44 +70,59 @@ func startServer(t *testing.T, binPath string, port int) *serverInfo {
 	dbPath := tmpDir + "/test.db"
 	serverAddr := fmt.Sprintf("http://localhost:%d", port)
 
+	stdoutFile, err := os.CreateTemp(tmpDir, "stdout-*.log")
+	if err != nil {
+		t.Fatalf("Failed to create stdout file: %v", err)
+	}
+	stdoutPath := stdoutFile.Name()
+	stdoutFile.Close()
+
+	stderrFile, err := os.CreateTemp(tmpDir, "stderr-*.log")
+	if err != nil {
+		t.Fatalf("Failed to create stderr file: %v", err)
+	}
+	stderrPath := stderrFile.Name()
+	stderrFile.Close()
+
 	serverCmd := exec.Command(binPath, "serve", "--port", fmt.Sprintf("%d", port), dbPath)
-	stdout := &bytes.Buffer{}
-	stderr := &bytes.Buffer{}
-	serverCmd.Stdout = stdout
-	serverCmd.Stderr = stderr
+	serverCmd.Stdout, _ = os.OpenFile(stdoutPath, os.O_WRONLY|os.O_APPEND, 0644)
+	serverCmd.Stderr, _ = os.OpenFile(stderrPath, os.O_WRONLY|os.O_APPEND, 0644)
 	if err := serverCmd.Start(); err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
 
-	// Wait for server to be ready and extract initial invite code
-	var initialInvite string
-	timeout := time.After(5 * time.Second)
+	// Poll the HTTP endpoint to detect when the server is ready.
+	timeout := time.After(10 * time.Second)
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-timeout:
-			t.Fatalf("Server did not generate initial invite code within timeout.\nServer stdout:\n%s\nServer stderr:\n%s", stdout.String(), stderr.String())
+			stderrContent, _ := os.ReadFile(stderrPath)
+			t.Fatalf("Server did not start within timeout.\nStderr:\n%s", stderrContent)
 		case <-ticker.C:
-			initialInvite = extractInviteCode(stdout.String())
-			if initialInvite == "" {
-				initialInvite = extractInviteCode(stderr.String())
-			}
-			if initialInvite != "" {
-				goto done
+			resp, err := http.Get(serverAddr + "/api/user/login")
+			if err == nil {
+				resp.Body.Close()
+				// Server is ready. Read the invite code from the output files.
+				// Files are safe to read because the server's startup phase is complete.
+				stdoutContent, _ := os.ReadFile(stdoutPath)
+				stderrContent, _ := os.ReadFile(stderrPath)
+				initialInvite := extractInviteCode(string(stdoutContent))
+				if initialInvite == "" {
+					initialInvite = extractInviteCode(string(stderrContent))
+				}
+				return &serverInfo{
+					cmd:           serverCmd,
+					addr:          serverAddr,
+					dbPath:        dbPath,
+					stdout:        stdoutPath,
+					stderr:        stderrPath,
+					initialInvite: initialInvite,
+				}
 			}
 		}
-	}
-done:
-
-	return &serverInfo{
-		cmd:           serverCmd,
-		addr:          serverAddr,
-		dbPath:        dbPath,
-		stdout:        stdout,
-		stderr:        stderr,
-		initialInvite: initialInvite,
 	}
 }
 
@@ -249,11 +264,13 @@ func TestIntegrationMessageFlow(t *testing.T) {
 	stopServer(t, serverInfo)
 
 	recvOutput := recvStdout.String()
-	serverOutput := serverInfo.stdout.String()
+	stdoutContent, _ := os.ReadFile(serverInfo.stdout)
+	stderrContent, _ := os.ReadFile(serverInfo.stderr)
+	serverOutput := stdoutContent
 
-	if !strings.Contains(serverOutput, "Starting grunt server") {
+	if !strings.Contains(string(serverOutput), "Starting grunt server") {
 		t.Fatalf("Server failed to start.\nServer stdout:\n%s\nServer stderr:\n%s",
-			serverOutput, serverInfo.stderr.String())
+			string(serverOutput), string(stderrContent))
 	}
 
 	if !strings.Contains(recvOutput, "Hello from alice to bob!") {
