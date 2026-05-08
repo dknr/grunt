@@ -20,3 +20,6 @@ server.json.log
 .DS_Store
 Thumbs.db
 server/openapi.gen.go
+
+# Test environment secrets
+scripts/test-env-llm.yaml
