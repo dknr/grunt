@@ -344,7 +344,12 @@ func (c *Client) readPump() {
 		}
 
 		if strings.HasPrefix(lineStr, "data:") {
-			dataBuf.WriteString(strings.TrimPrefix(lineStr, "data:"))
+			data := strings.TrimPrefix(lineStr, "data:")
+			// Strip leading space per SSE spec (data: <value>)
+			if len(data) > 0 && data[0] == ' ' {
+				data = data[1:]
+			}
+			dataBuf.WriteString(data)
 			dataBuf.WriteString("\n")
 		}
 	}
