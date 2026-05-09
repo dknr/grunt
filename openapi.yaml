@@ -106,6 +106,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/chat/message:
+    post:
+      summary: Send a message
+      operationId: sendMessage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendMessageResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/chat/sync:
     get:
       summary: Sync messages
@@ -211,6 +249,25 @@ components:
           type: string
           description: Authentication token (valid for 24 hours)
           example: abc123def456
+
+    SendMessageRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: Message content
+          example: Hello, world!
+
+    SendMessageResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Message ID
+          example: 42
 
     MessageResponse:
       type: object

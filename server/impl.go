@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"grunt/client"
 	"grunt/server/storage"
 )
 
@@ -164,6 +165,57 @@ func (a *apiImpl) SyncMessages(w http.ResponseWriter, r *http.Request, params Sy
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(apiMsgs)
+}
+
+// SendMessage implements the send message endpoint.
+func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
+	var req SendMessageRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Content == "" {
+		http.Error(w, `{"error":"content is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	userID := UserIDFromContext(r)
+	if userID == "" {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	broadcast := &client.Broadcast{
+		Type:      "message",
+		Content:   req.Content,
+		UserID:    userID,
+		Timestamp: time.Now(),
+	}
+
+	id, err := a.store.Save(broadcast)
+	if err != nil {
+		slog.Error("Error saving message", "error", err)
+		http.Error(w, `{"error":"failed to save message"}`, http.StatusInternalServerError)
+		return
+	}
+	broadcast.ID = int(id)
+
+	// Broadcast to all connected clients
+	data, err := json.Marshal(broadcast)
+	if err != nil {
+		slog.Error("Error marshaling broadcast", "error", err)
+		http.Error(w, `{"error":"failed to broadcast message"}`, http.StatusInternalServerError)
+		return
+	}
+
+	a.hub.BroadcastMessage(data)
+
+	resp := SendMessageResponse{
+		Id: int64Ptr(id),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 }
 
 // strPtr returns a pointer to the given string.

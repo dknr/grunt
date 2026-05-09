@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -229,24 +230,35 @@ func (c *Client) StopListening() {
 	close(c.listenDone)
 }
 
-// SendMessage sends a message to the grunt server via the WebSocket connection.
+// SendMessage sends a message to the grunt server via HTTP POST.
 func (c *Client) SendMessage(content string) error {
-	c.mutex.Lock()
-	if !c.connected || c.WSConn == nil {
-		c.mutex.Unlock()
-		return fmt.Errorf("websocket not connected")
+	if c.Token == "" {
+		return fmt.Errorf("no token available; call Login() first")
 	}
-	c.mutex.Unlock()
 
-	clientMsg := ClientMsg{Content: content}
-	data, err := json.Marshal(clientMsg)
+	payload, err := json.Marshal(map[string]string{
+		"content": content,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	err = c.WSConn.WriteMessage(websocket.TextMessage, data)
+	req, err := http.NewRequest(http.MethodPost, c.ServerAddr+"/api/chat/message", bytes.NewReader(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create send message request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to send message: %s - %s", resp.Status, string(body))
 	}
 
 	return nil
