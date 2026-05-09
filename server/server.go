@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,8 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"grunt/client"
 	"grunt/server/storage"
 )
 
@@ -67,15 +64,15 @@ func NewWithPort(dbPath string, port int) *Server {
 		Addr:         ":" + strconv.Itoa(port),
 		Handler:      authMiddleware(s.mux),
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		WriteTimeout: 0, // 0 = no timeout (required for SSE long-lived connections)
+		IdleTimeout:  0, // 0 = no timeout (required for SSE long-lived connections)
 	}
 
 	return s
 }
 
 func (s *Server) setupRoutes() {
-	s.mux.HandleFunc("GET /ws", s.hub.HandleWebSocket)
+	// SSE stream route is registered by the OpenAPI-generated HandlerWithOptions.
 }
 
 func (s *Server) Serve() error {
@@ -99,13 +96,4 @@ func (s *Server) Serve() error {
 	slog.Info("Starting grunt server", "addr", s.httpSrv.Addr)
 
 	return s.httpSrv.ListenAndServe()
-}
-
-// SendSyncResponse sends a sync response to a websocket client
-func (s *Server) SendSyncResponse(conn *websocket.Conn, msgs []client.Broadcast) error {
-	data, err := json.Marshal(msgs)
-	if err != nil {
-		return err
-	}
-	return conn.WriteMessage(websocket.TextMessage, data)
 }

@@ -48,10 +48,6 @@ var replCmd = &cobra.Command{
 			log.Fatalf("Failed to login: %v", err)
 		}
 
-		if err := client.Connect(); err != nil {
-			log.Fatalf("Failed to connect: %v", err)
-		}
-
 		rl, err := readline.NewEx(&readline.Config{
 			Prompt:      "> ",
 			HistoryLimit: 500,

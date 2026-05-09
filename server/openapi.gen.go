@@ -120,6 +120,9 @@ type ServerInterface interface {
 	// Send a message
 	// (POST /api/chat/message)
 	SendMessage(w http.ResponseWriter, r *http.Request)
+	// Stream messages and events via SSE
+	// (GET /api/chat/stream)
+	StreamMessages(w http.ResponseWriter, r *http.Request)
 	// Sync messages
 	// (GET /api/chat/sync)
 	SyncMessages(w http.ResponseWriter, r *http.Request, params SyncMessagesParams)
@@ -154,6 +157,26 @@ func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SendMessage(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamMessages operation middleware
+func (siw *ServerInterfaceWrapper) StreamMessages(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamMessages(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -378,6 +401,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chat/message", wrapper.SendMessage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chat/stream", wrapper.StreamMessages)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chat/sync", wrapper.SyncMessages)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/user", wrapper.RegisterUser)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/user/invite", wrapper.GetInvite)
@@ -391,25 +415,26 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"7Fhhb9s2E/4rfPnuQwIoseI4KSBgHxo0yzxsQBE3GLAgCBjpbLGTSOV4cuIV/u8DSSmSbGnxtqbttgL+",
+	"YIq8u4d3zx2P/MBjnRdagSLDow/cxCnkwv09Qy2SWBiygwJ1AUgS3FScSVB0KxM7gEeRFxnwiIu7+Gh8",
+	"zANOq8KODaFUC74OeKwVgaLu8u8hy3TAHjRmyf/6pDb0T8YBn2vMBfGIS0Wnk0ZIKoIFoJUimYMhkRdd",
+	"a+NwfHoQnhyEr96FYeR+v/CWwkQQHFjZPiT+Q1tdDsaIRe/i0gBuOCaTcc/SJ8Vc372HmKzwOaLGbY9D",
+	"/blRKtVSZDJhMUICiqTIzG4mpmopCS7BFFoZ6ImuTtzXBEyMsiCpFY8qKeYmg52CDo+FRDC3gra1nds5",
+	"YQes8vlQpI7+TKT6tvujXkh1Cfcl9FG5EMY8aEy2Ib6tZ9rYDMQINLDhOvBdPVcGUImNPQ4zAuG+lAgJ",
+	"j669wqDBeDO8vaFgkv4V1Dao1yWlljRxFQO7iu15Qs01svGEpbpEs98T6wTmk5PT3Zz/k0+TYXx1HnWo",
+	"bfdteS0Ikt3sXMJCGgIcjLN09L19lttsrw6A8wM6vZ6p+zvy/h9FqaDjmT6CzUAlT2Ec8G6rvneRVoKs",
+	"XhDsXv83gNcanoU4xDSZDMObvmkj2+mg2WbhOrCxLFHSamaPUW/2DAQC2nyzozs3+q5W/sPP73jgD12r",
+	"yc82xlKigq+tYqnmehv+JYjMVULm00iqBTOAS0D2+u3U6pHkXH2BpaLq2xLQePHwcHwYWv/pApQoJI/4",
+	"8WF4eOz4QamDPxKFHMWpoFErUwvtSWDd61JjmvCoHQXuYweGznSy2mCIKIqsKjyj90arpu+w/75BmPOI",
+	"/3/UNCajqisZ9VBx3eUJYQnug2eB28I4DF8GQcU0B6GfV8YaXAd88hEh+A6hx+iZSBjWbrE2j17e5pUS",
+	"JaUa5W+QWKMnn2KjU0W2/mU116Fa2OQfj667mXd9s74JuCnzXOCq4ioTrOa0lW2YbghB5BbeAvp47qar",
+	"EBv+LNsIHmkES1B00GhuXLBZ9ra2O5udMy/I9LyGbJhQCXNazddoPxdt770e17GlFGw2O99kwErFw/Ff",
+	"qbgV/UKgyIEAjcOxWaGpRNVYfpCUsukbtnDNDTJKhWKUSsOWIivBHcc84vcl4IoH3B3yETdSuaO98WQC",
+	"c1FmxKNwp6Nq69wTjzIvc6bK/A6wQyvSDD3ovdJAwh5SUMwB+DbcH8CX2VviX4d38zcLtiTIzXP8aq6z",
+	"zcktEMXqD+q3sa5ACUtP989RxT93ijU5tFLxE0uadKkb1P6WoG7Lr3zX+RI9wWbnv1ND8PFq5Q7NwFX7",
+	"NvNvbgam1YuERubv/gmTrVeDL4nNNWuYYAoemGNxh9Mjj3zwELgA8rdG/oLd5sZLTb/Ln26uC1AWYU2y",
+	"r/3AYD9wUXmqin6HpB0SZHoh1XB5c28vL1jbOk9Xn/im031X6omDW8BMGcdgzLzM/hOlrf3Y+iXVs9Z7",
+	"Hrj2Vt+RkIoJ/7Tn1Xp536aWmFUPDNFolOlYZKk2FJ1MXp2e8PXN+vcAAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

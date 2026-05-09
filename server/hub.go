@@ -1,23 +1,18 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/matoous/go-nanoid/v2"
 	"grunt/client"
 	"grunt/server/storage"
 )
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
-}
 
 // TokenStore manages authentication tokens.
 type TokenStore struct {
@@ -67,30 +62,32 @@ func ValidateToken(token string) (string, bool) {
 }
 
 type Hub struct {
-	clients    map[string]*Client
-	mu         sync.RWMutex
-	store      *storage.Store
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
+	subscribers  map[string]*Subscriber
+	mu           sync.RWMutex
+	store        *storage.Store
+	broadcast    chan []byte
+	register     chan *Subscriber
+	unregister   chan *Subscriber
 }
 
-type Client struct {
+type Subscriber struct {
 	hub      *Hub
-	conn     *websocket.Conn
 	send     chan []byte
 	clientID string
 	userID   string
 	done     chan struct{}
+	writer   http.ResponseWriter
+	flusher  http.Flusher
+	ctx      context.Context
 }
 
 func NewHub(store *storage.Store) *Hub {
 	return &Hub{
-		clients:    make(map[string]*Client),
-		store:      store,
-		broadcast:  make(chan []byte, 256),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+		subscribers:  make(map[string]*Subscriber),
+		store:        store,
+		broadcast:    make(chan []byte, 256),
+		register:     make(chan *Subscriber),
+		unregister:   make(chan *Subscriber),
 	}
 }
 
@@ -101,34 +98,36 @@ func (h *Hub) BroadcastMessage(data []byte) {
 func (h *Hub) Run() {
 	for {
 		select {
-		case client := <-h.register:
+		case sub := <-h.register:
 			h.mu.Lock()
-			h.clients[client.clientID] = client
+			h.subscribers[sub.clientID] = sub
 			h.mu.Unlock()
-			slog.Info("Client connected", "client_id", client.clientID, "total_clients", len(h.clients))
-			h.broadcastEvent("join", client.clientID, client.userID)
+			slog.Info("Subscriber connected", "client_id", sub.clientID, "total_subscribers", len(h.subscribers))
+			h.broadcastEvent("join", sub.clientID, sub.userID)
 
-		case client := <-h.unregister:
+		case sub := <-h.unregister:
 			h.mu.Lock()
-			if _, ok := h.clients[client.clientID]; ok {
-				delete(h.clients, client.clientID)
-				// Do NOT close client.send here; writePump handles it
-				slog.Info("Client disconnected", "client_id", client.clientID, "total_clients", len(h.clients))
-				h.broadcastEvent("leave", client.clientID, client.userID)
+			if _, ok := h.subscribers[sub.clientID]; ok {
+				delete(h.subscribers, sub.clientID)
+				slog.Info("Subscriber disconnected", "client_id", sub.clientID, "total_subscribers", len(h.subscribers))
+				h.broadcastEvent("leave", sub.clientID, sub.userID)
 			}
 			h.mu.Unlock()
 
 		case msg := <-h.broadcast:
 			h.mu.RLock()
-			for _, client := range h.clients {
-				// Use recover to handle sending to a closed channel safely
+			for _, sub := range h.subscribers {
 				func() {
 					defer func() {
 						if r := recover(); r != nil {
-							slog.Warn("Recovered from panic during broadcast", "client_id", client.clientID, "error", r)
+							slog.Warn("Recovered from panic during broadcast", "client_id", sub.clientID, "error", r)
 						}
 					}()
-					client.send <- msg
+					select {
+					case sub.send <- msg:
+					default:
+						slog.Warn("Subscriber send buffer full, dropping message", "client_id", sub.clientID)
+					}
 				}()
 			}
 			h.mu.RUnlock()
@@ -150,129 +149,104 @@ func (h *Hub) broadcastEvent(event, clientID, userID string) {
 	h.broadcast <- data
 }
 
-func (c *Client) readPump() {
+func (s *Subscriber) writePump() {
 	defer func() {
-		close(c.done)
-		c.hub.unregister <- c
-		c.conn.Close()
-	}()
-
-	for {
-		_, rawMsg, err := c.conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				slog.Warn("WebSocket error for client", "client_id", c.clientID, "user", c.userID, "error", err)
-			} else {
-				slog.Info("Client read close (normal)", "client_id", c.clientID, "user", c.userID)
-			}
-			break
-		}
-
-		slog.Info("Received message", "client_id", c.clientID, "user", c.userID, "raw", string(rawMsg))
-
-		// Parse client message
-		var clientMsg client.ClientMsg
-		if err := json.Unmarshal(rawMsg, &clientMsg); err != nil {
-			slog.Warn("Client sent invalid JSON", "client_id", c.clientID, "user", c.userID, "error", err)
-			continue
-		}
-
-		slog.Info("Parsed message", "client_id", c.clientID, "user", c.userID, "content", clientMsg.Content)
-
-		// Create broadcast message
-		broadcast := &client.Broadcast{
-			Type:      "message",
-			Content:   clientMsg.Content,
-			ClientID:  c.clientID,
-			UserID:    c.userID,
-			Timestamp: time.Now(),
-		}
-
-		// Save to storage
-		id, err := c.hub.store.Save(broadcast)
-		if err != nil {
-			slog.Error("Error saving message", "client_id", c.clientID, "user", c.userID, "error", err)
-			continue
-		}
-		broadcast.ID = int(id)
-
-		slog.Info("Saved message", "client_id", c.clientID, "user", c.userID, "id", id)
-
-		// Broadcast to other clients
-		data, err := json.Marshal(broadcast)
-		if err != nil {
-			slog.Error("Error marshaling broadcast", "client_id", c.clientID, "user", c.userID, "error", err)
-			continue
-		}
-
-		slog.Info("Broadcasting message", "client_id", c.clientID, "user", c.userID, "data", string(data))
-
-		// Send to all clients (including sender for consistency)
-		c.hub.broadcast <- data
-	}
-}
-
-func (c *Client) writePump() {
-	defer func() {
-		c.hub.unregister <- c
-		c.conn.Close()
-		close(c.send) // writePump is now responsible for closing the channel
-		slog.Info("Client write pump exited", "client_id", c.clientID)
+		s.hub.unregister <- s
+		close(s.send)
+		slog.Info("Subscriber write pump exited", "client_id", s.clientID)
 	}()
 
 	for {
 		select {
-		case <-c.done:
-			// Connection is closing, stop writing
+		case <-s.ctx.Done():
 			return
-		case msg, ok := <-c.send:
+		case msg, ok := <-s.send:
 			if !ok {
-				// Channel closed, exit
 				return
 			}
-			err := c.conn.WriteMessage(websocket.TextMessage, msg)
-			if err != nil {
-				slog.Error("Error writing to client", "client_id", c.clientID, "error", err)
+
+			// Determine event type from message content
+			var envelope struct {
+				Type string `json:"type"`
+			}
+			if err := json.Unmarshal(msg, &envelope); err != nil {
+				slog.Error("Error unmarshaling message for SSE", "error", err)
+				continue
+			}
+
+			eventType := "message"
+			if envelope.Type == "event" {
+				eventType = "event"
+			}
+
+			// Write SSE format directly to response writer
+			if _, err := s.writer.Write([]byte("event: " + eventType + "\n")); err != nil {
+				slog.Error("Error writing event line", "error", err, "client_id", s.clientID)
 				return
 			}
+			if _, err := s.writer.Write([]byte("data: " + string(msg) + "\n\n")); err != nil {
+				slog.Error("Error writing data line", "error", err, "client_id", s.clientID)
+				return
+			}
+			s.flusher.Flush()
 		}
 	}
 }
 
-func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		slog.Error("WebSocket upgrade error", "error", err)
+func (h *Hub) HandleSSEStream(w http.ResponseWriter, r *http.Request) {
+	// Check for SSE support
+	if accept := r.Header.Get("Accept"); accept != "" && !strings.Contains(accept, "text/event-stream") {
+		http.Error(w, `{"error":"SSE not supported"}`, http.StatusBadRequest)
 		return
 	}
 
-	userID := UserIDFromContext(r)
-	if userID == "" {
-		slog.Warn("WebSocket connection rejected", "reason", "no user in context")
+	// Authenticate
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == "" {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-		conn.Close()
 		return
 	}
 
+	userID, ok := ValidateToken(token)
+	if !ok {
+		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
+		return
+	}
+
+	// Ensure response supports flushing
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, `{"error":"streaming not supported"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Generate client ID
 	clientID, err := gonanoid.Generate("_-0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", 16)
 	if err != nil {
 		slog.Error("Error generating client ID", "error", err)
-		conn.Close()
+		http.Error(w, `{"error":"failed to generate client ID"}`, http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("WebSocket connection", "user", userID, "client_id", clientID)
+	slog.Info("SSE connection", "user", userID, "client_id", clientID)
 
-	client := &Client{
+	subscriber := &Subscriber{
 		hub:      h,
-		conn:     conn,
 		send:     make(chan []byte, 256),
 		done:     make(chan struct{}),
 		clientID: clientID,
 		userID:   userID,
+		writer:   w,
+		flusher:  flusher,
+		ctx:      r.Context(),
 	}
 
-	h.register <- client
-	go client.writePump()
-	go client.readPump()
+	h.register <- subscriber
+	subscriber.writePump()
 }

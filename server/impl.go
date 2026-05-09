@@ -169,8 +169,11 @@ func (a *apiImpl) SyncMessages(w http.ResponseWriter, r *http.Request, params Sy
 
 // SendMessage implements the send message endpoint.
 func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
+	slog.Info("SendMessage handler called")
+
 	var req SendMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		slog.Warn("SendMessage decode error", "error", err)
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
@@ -180,6 +183,7 @@ func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := UserIDFromContext(r)
+	slog.Info("SendMessage userID from context", "userID", userID)
 	if userID == "" {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
@@ -200,6 +204,8 @@ func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	broadcast.ID = int(id)
 
+	slog.Info("Message saved", "id", id, "content", req.Content)
+
 	// Broadcast to all connected clients
 	data, err := json.Marshal(broadcast)
 	if err != nil {
@@ -208,7 +214,9 @@ func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.Info("Broadcasting message", "id", id, "content", req.Content)
 	a.hub.BroadcastMessage(data)
+	slog.Info("Message broadcast sent to hub", "id", id)
 
 	resp := SendMessageResponse{
 		Id: int64Ptr(id),
@@ -216,6 +224,11 @@ func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
+}
+
+// StreamMessages delegates SSE stream handling to the Hub.
+func (a *apiImpl) StreamMessages(w http.ResponseWriter, r *http.Request) {
+	a.hub.HandleSSEStream(w, r)
 }
 
 // strPtr returns a pointer to the given string.

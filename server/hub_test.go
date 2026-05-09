@@ -36,16 +36,16 @@ func TestHubStartStop(t *testing.T) {
 func TestBroadcast(t *testing.T) {
 	hub := newTestHub(t)
 
-	// Create a mock client
-	client := &Client{
+	// Create a mock subscriber
+	sub := &Subscriber{
 		hub:      hub,
 		send:     make(chan []byte, 256),
 		clientID: "test-client",
 		done:     make(chan struct{}),
 	}
 
-	// Register the client
-	hub.register <- client
+	// Register the subscriber
+	hub.register <- sub
 
 	// Give it time to register
 	time.Sleep(10 * time.Millisecond)
@@ -54,10 +54,10 @@ func TestBroadcast(t *testing.T) {
 	msgData := []byte(`{"content":"test"}`)
 	hub.BroadcastMessage(msgData)
 
-	// Check if client received the message
-	// Discard the "join" system message that was sent when the client registered
+	// Check if subscriber received the message
+	// Discard the "join" system message that was sent when the subscriber registered
 	select {
-	case <-client.send:
+	case <-sub.send:
 		// Expected "join" message, discard it
 	case <-time.After(1 * time.Second):
 		t.Error("Timed out waiting for join message")
@@ -65,7 +65,7 @@ func TestBroadcast(t *testing.T) {
 
 	// Now check for the test message
 	select {
-	case received := <-client.send:
+	case received := <-sub.send:
 		if string(received) != string(msgData) {
 			t.Errorf("Expected message %s, got %s", msgData, received)
 		}
@@ -74,34 +74,34 @@ func TestBroadcast(t *testing.T) {
 	}
 
 	// Cleanup
-	close(client.done)
+	close(sub.done)
 }
 
 func TestClientRegister(t *testing.T) {
 	hub := newTestHub(t)
 
-	client := &Client{
+	sub := &Subscriber{
 		hub:      hub,
 		send:     make(chan []byte, 256),
 		clientID: "test-client-reg",
 		done:     make(chan struct{}),
 	}
 
-	// Register the client
-	hub.register <- client
+	// Register the subscriber
+	hub.register <- sub
 
 	// Give it time to register
 	time.Sleep(10 * time.Millisecond)
 
-	// Check if client is in the hub's client map
+	// Check if subscriber is in the hub's subscriber map
 	hub.mu.RLock()
-	_, ok := hub.clients[client.clientID]
+	_, ok := hub.subscribers[sub.clientID]
 	hub.mu.RUnlock()
 
 	if !ok {
-		t.Error("Client should be registered in hub")
+		t.Error("Subscriber should be registered in hub")
 	}
 
 	// Cleanup
-	close(client.done)
+	close(sub.done)
 }

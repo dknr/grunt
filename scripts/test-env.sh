@@ -49,7 +49,7 @@ echo -e "${GREEN}Creating tmux session: $SESSION_NAME${NC}"
 tmux new-session -d -s "$SESSION_NAME" -n "server"
 
 # Pane 0: Server
-tmux send-keys -t "$SESSION_NAME:server" "cd $GRUNT_DIR && ./dist/grunt serve --port $PORT :memory:" C-m
+tmux send-keys -t "$SESSION_NAME:server" "cd $GRUNT_DIR && ./dist/grunt serve --port $PORT file::memory:?cache=shared" C-m
 
 # Wait for server to be ready by polling the HTTP endpoint
 echo -e "${YELLOW}Waiting for server to start...${NC}"

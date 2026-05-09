@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -9,20 +10,17 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 // Client provides a high-level interface for interacting with a grunt server.
 type Client struct {
 	ServerAddr string
 	HTTPClient *http.Client
-	WSConn     *websocket.Conn
 	UserID     string
 	Token      string
 
 	// Channels for communication
-	messageChan chan []byte // raw WebSocket messages
+	messageChan chan []byte // raw SSE messages
 	doneChan    chan struct{}
 	listenDone  chan struct{}
 
@@ -30,6 +28,7 @@ type Client struct {
 	mutex    sync.Mutex
 	connected bool
 	listening bool
+	resp     *http.Response // SSE response body
 }
 
 // NewClient creates a new grunt client for the given server address and user ID.
@@ -133,7 +132,7 @@ func (c *Client) Login(password string) error {
 	return nil
 }
 
-// Connect establishes a WebSocket connection to the grunt server.
+// Connect establishes an SSE connection to the grunt server.
 // Message listening is not started automatically; use StartListening() to begin.
 // Uses the stored token for authentication via Authorization: Bearer header.
 func (c *Client) Connect() error {
@@ -148,18 +147,25 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("no token available; call Login() first")
 	}
 
-	wsURL := strings.Replace(c.ServerAddr, "http", "ws", 1) + "/ws"
-
-	headers := http.Header{}
-	headers.Set("Authorization", "Bearer "+c.Token)
-
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	req, err := http.NewRequest("GET", c.ServerAddr+"/api/chat/stream", nil)
 	if err != nil {
-		return fmt.Errorf("failed to connect to websocket: %w", err)
+		return fmt.Errorf("failed to create SSE request: %w", err)
 	}
-	c.WSConn = conn
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "text/event-stream")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to SSE stream: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return fmt.Errorf("SSE connection failed: %s", resp.Status)
+	}
 
 	c.mutex.Lock()
+	c.resp = resp
 	c.connected = true
 	c.mutex.Unlock()
 
@@ -201,7 +207,7 @@ func (c *Client) SyncHistory(since int) ([]Broadcast, error) {
 	return broadcasts, nil
 }
 
-// StartListening begins listening for incoming WebSocket messages and returns
+// StartListening begins listening for incoming SSE messages and returns
 // a read-only channel for receiving them. Should be called after Connect().
 func (c *Client) StartListening() <-chan []byte {
 	c.mutex.Lock()
@@ -264,14 +270,14 @@ func (c *Client) SendMessage(content string) error {
 	return nil
 }
 
-// ReceiveMessages returns a read-only channel for receiving raw WebSocket messages
+// ReceiveMessages returns a read-only channel for receiving raw messages
 // from the server. The channel is closed when the connection is closed.
-// Callers can unmarshal the bytes as message.Broadcast or message.System as needed.
+// Callers can unmarshal the bytes as message.Broadcast or message.Event as needed.
 func (c *Client) ReceiveMessages() <-chan []byte {
 	return c.messageChan
 }
 
-// Close closes the WebSocket connection and cleans up resources.
+// Close closes the SSE connection and cleans up resources.
 func (c *Client) Close() error {
 	c.mutex.Lock()
 	if !c.connected {
@@ -281,50 +287,65 @@ func (c *Client) Close() error {
 	c.mutex.Unlock()
 
 	close(c.doneChan)
-	if c.WSConn != nil {
-		err := c.WSConn.Close()
-		if err != nil {
-			return fmt.Errorf("error closing websocket: %w", err)
-		}
+	if c.resp != nil && c.resp.Body != nil {
+		c.resp.Body.Close()
 	}
 
 	c.mutex.Lock()
 	c.connected = false
+	c.resp = nil
 	c.mutex.Unlock()
 
 	return nil
 }
 
-// readPump handles incoming WebSocket messages and broadcasts them on the message channel.
+// readPump handles incoming SSE messages and broadcasts them on the message channel.
 func (c *Client) readPump() {
 	defer func() {
 		close(c.messageChan)
 	}()
 
+	reader := bufio.NewReader(c.resp.Body)
+	var dataBuf strings.Builder
+
 	for {
 		select {
 		case <-c.doneChan:
-			// Connection closed, stop pumping
 			return
 		case <-c.listenDone:
-			// Listener explicitly stopped
 			return
 		default:
-			_, msg, err := c.WSConn.ReadMessage()
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					// Log error but don't return - connection might be closing normally
-				}
-				return
-			}
+		}
 
-			select {
-			case c.messageChan <- msg:
-			case <-c.doneChan:
-				return
-			case <-c.listenDone:
-				return
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			// EOF or read error — connection closed
+			return
+		}
+
+		// Strip \r if present (handle \r\n line endings)
+		lineStr := strings.TrimRight(string(line), "\r\n")
+
+		if lineStr == "" {
+			// Empty line signals end of SSE event
+			if dataBuf.Len() > 0 {
+				data := make([]byte, dataBuf.Len())
+				copy(data, []byte(dataBuf.String()))
+				select {
+				case c.messageChan <- data:
+				case <-c.doneChan:
+					return
+				case <-c.listenDone:
+					return
+				}
 			}
+			dataBuf.Reset()
+			continue
+		}
+
+		if strings.HasPrefix(lineStr, "data:") {
+			dataBuf.WriteString(strings.TrimPrefix(lineStr, "data:"))
+			dataBuf.WriteString("\n")
 		}
 	}
 }
