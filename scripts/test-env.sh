@@ -112,9 +112,11 @@ fi
 
 echo -e "${GREEN}Repl invite code: $REPL_INVITE${NC}"
 
-# Start recv in Pane 1
-tmux new-window -t "$SESSION_NAME" -n "recv"
-tmux send-keys -t "$SESSION_NAME:recv" "cd $GRUNT_DIR && export GRUNT_LOGIN=recv:recvpass && ./dist/grunt recv --server http://localhost:$PORT --invite-code $REPL_INVITE" C-m
+# Start recv and repl in a split window
+tmux new-window -t "$SESSION_NAME" -n "clients"
+tmux send-keys -t "$SESSION_NAME:clients" "cd $GRUNT_DIR && export GRUNT_LOGIN=recv:recvpass && ./dist/grunt recv --server http://localhost:$PORT --invite-code $REPL_INVITE" C-m
+tmux split-window -v -t "$SESSION_NAME:clients"
+tmux send-keys -t "$SESSION_NAME:clients.1" "cd $GRUNT_DIR && export GRUNT_LOGIN=recv:recvpass && ./dist/grunt repl --server http://localhost:$PORT --invite-code $REPL_INVITE" C-m
 
 # Generate invite code for igor1 using repl's token (we'll use recv's token for now)
 echo -e "${YELLOW}Generating invite code for igor1...${NC}"
@@ -182,10 +184,6 @@ EOF
 tmux new-window -t "$SESSION_NAME" -n "igor2"
 tmux send-keys -t "$SESSION_NAME:igor2" "cd $IGOR_DIR && ./dist/igor --config config-igor2.yaml" C-m
 
-# Start repl in a new window
-tmux new-window -t "$SESSION_NAME" -n "repl"
-tmux send-keys -t "$SESSION_NAME:repl" "cd $GRUNT_DIR && export GRUNT_LOGIN=recv:recvpass && ./dist/grunt repl --server http://localhost:$PORT --invite-code $REPL_INVITE" C-m
-
 # Select server window to start
 tmux select-window -t "$SESSION_NAME:server"
 
@@ -194,8 +192,7 @@ echo -e "${GREEN}Session: $SESSION_NAME${NC}"
 echo -e "${GREEN}Use 'tmux attach -t $SESSION_NAME' to view${NC}"
 echo -e "${GREEN}Panes:${NC}"
 echo -e "  - server: Grunt server logs"
-echo -e "  - recv: Message receiver"
-echo -e "  - repl: Interactive REPL"
+echo -e "  - clients: recv (top) and repl (bottom)"
 echo -e "  - igor1: First LLM bot"
 echo -e "  - igor2: Second LLM bot"
 echo -e "${YELLOW}To clean up: tmux kill-session -t $SESSION_NAME${NC}"
