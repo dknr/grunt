@@ -184,6 +184,23 @@ EOF
 tmux new-window -t "$SESSION_NAME" -n "igor2"
 tmux send-keys -t "$SESSION_NAME:igor2" "cd $IGOR_DIR && ./dist/igor --config config-igor2.yaml" C-m
 
+# Generate invite code for deno user
+echo -e "${YELLOW}Generating invite code for deno...${NC}"
+DENO_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \
+    -H "Authorization: Bearer $RECV_TOKEN")
+DENO_INVITE=$(echo $DENO_INVITE_RESPONSE | grep -oP '"code":"\K[^"]+')
+
+if [ -z "$DENO_INVITE" ]; then
+    echo -e "${RED}ERROR: Could not generate invite code for deno${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Deno invite code: $DENO_INVITE${NC}"
+
+# Start deno send in Pane 4
+tmux new-window -t "$SESSION_NAME" -n "deno"
+tmux send-keys -t "$SESSION_NAME:deno" "cd $GRUNT_DIR && GRUNT_LOGIN=deno:denopass deno run --allow-env --allow-net deno-client/send.ts \"Hello from Deno!\" --invite-code $DENO_INVITE" C-m
+
 # Select server window to start
 tmux select-window -t "$SESSION_NAME:server"
 
@@ -195,4 +212,5 @@ echo -e "  - server: Grunt server logs"
 echo -e "  - clients: recv (top) and repl (bottom)"
 echo -e "  - igor1: First LLM bot"
 echo -e "  - igor2: Second LLM bot"
+echo -e "  - deno: Deno send client (one-shot)"
 echo -e "${YELLOW}To clean up: tmux kill-session -t $SESSION_NAME${NC}"
