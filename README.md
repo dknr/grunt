@@ -4,11 +4,12 @@ A simple chat protocol for Grugs.
 
 ## Features
 
-- WebSocket-based pub/sub messaging
+- SSE-based pub/sub messaging (Server-Sent Events)
 - SQLite message storage (in-memory or on-disk)
 - JSON wire protocol
 - Server-to-client join/leave notifications
 - Message history sync endpoint
+- REST API for sending messages
 
 ## Usage
 
@@ -24,13 +25,21 @@ grunt serve /path/to/database.sqlite  # on-disk database
 Send a message:
 
 ```bash
-grunt send "Hello, Grugs!"
+GRUNT_LOGIN=user:pass grunt send "Hello, Grugs!" --invite-code CODE
 ```
 
 Receive messages:
 
 ```bash
-grunt recv
+GRUNT_LOGIN=user:pass grunt recv --invite-code CODE
+```
+
+### Deno Client
+
+A Deno-based send client is also available:
+
+```bash
+GRUNT_LOGIN=user:pass deno run --allow-env --allow-net deno-client/send.ts "Hello, Grugs!" --invite-code CODE
 ```
 
 ### Sync Endpoint
@@ -38,20 +47,19 @@ grunt recv
 Retrieve message history:
 
 ```bash
-curl http://localhost:54765/sync?since=0
+curl http://localhost:54765/api/chat/sync?since=0
 ```
 
 ## Architecture
 
-- `cmd/grunt/` - CLI commands (server, send, recv)
-- `internal/server/` - WebSocket hub and HTTP server
-- `internal/storage/` - SQLite message storage
-- `internal/message/` - Message types and protocol definitions
+- `cmd/grunt/` - CLI commands (server, send, recv, repl)
+- `server/` - SSE hub and HTTP server
+- `server/storage/` - SQLite message storage
+- `client/` - Go client library
 
 ## Dependencies
 
-- `github.com/gin-gonic/gin` - HTTP routing
-- `github.com/gorilla/websocket` - WebSocket support
 - `github.com/matoous/go-nanoid/v2` - Client ID generation
 - `github.com/spf13/cobra` - CLI parsing
 - `modernc.org/sqlite` - In-memory SQLite (pure Go)
+
