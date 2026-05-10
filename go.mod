@@ -4,7 +4,6 @@ go 1.26.2
 
 require (
 	github.com/getkin/kin-openapi v0.137.0
-	github.com/gorilla/websocket v1.5.3
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/oapi-codegen/runtime v1.4.0
 	golang.org/x/crypto v0.50.0
