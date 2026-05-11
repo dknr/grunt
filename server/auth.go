@@ -20,14 +20,17 @@ func authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// All other endpoints require auth
+		// Authenticate: try Authorization header first, fall back to query param
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token == "" {
+			token = r.URL.Query().Get("token")
+		}
+		if token == "" {
 			http.Error(w, `{"error":"missing or invalid authorization header"}`, http.StatusUnauthorized)
 			return
 		}
 
-		token := strings.TrimPrefix(authHeader, "Bearer ")
 		userID, ok := ValidateToken(token)
 		if !ok {
 			http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)

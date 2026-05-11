@@ -200,8 +200,11 @@ func (h *Hub) HandleSSEStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authenticate
+	// Authenticate: try Authorization header first, fall back to query param
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
 	if token == "" {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
