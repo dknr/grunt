@@ -10,22 +10,51 @@ type contextKey string
 
 const userIDKey contextKey = "userID"
 
+// ExtractToken checks for a token in the Authorization header, Cookie, or Query parameter.
+// It returns the token string or an empty string if not found.
+func ExtractToken(r *http.Request) string {
+	// 1. Authorization Header
+	authHeader := r.Header.Get("Authorization")
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token != "" {
+		return token
+	}
+
+	// 2. Cookie
+	cookie, err := r.Cookie("token")
+	if err == nil {
+		return cookie.Value
+	}
+
+	// 3. Query Parameter (Legacy/HTMX SSE)
+	return r.URL.Query().Get("token")
+}
+
 // authMiddleware applies authentication to requests that require it.
-// Public endpoints (login, register) are exempt.
+// Public endpoints are exempt.
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Public endpoints that don't require auth
-		if r.Method == http.MethodPost && (r.URL.Path == "/api/user" || r.URL.Path == "/api/user/login") {
+		switch {
+		case r.Method == http.MethodPost && (r.URL.Path == "/api/user" || r.URL.Path == "/api/user/login"):
+			next.ServeHTTP(w, r)
+			return
+		case r.Method == http.MethodGet && r.URL.Path == "/":
+			next.ServeHTTP(w, r)
+			return
+		case r.Method == http.MethodGet && r.URL.Path == "/login":
+			next.ServeHTTP(w, r)
+			return
+		case r.Method == http.MethodPost && r.URL.Path == "/login":
+			next.ServeHTTP(w, r)
+			return
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/static/"):
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Authenticate: try Authorization header first, fall back to query param
-		authHeader := r.Header.Get("Authorization")
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token == "" {
-			token = r.URL.Query().Get("token")
-		}
+		// Authenticate using the unified ExtractToken function
+		token := ExtractToken(r)
 		if token == "" {
 			http.Error(w, `{"error":"missing or invalid authorization header"}`, http.StatusUnauthorized)
 			return

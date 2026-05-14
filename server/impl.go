@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"grunt/client"
@@ -172,10 +173,20 @@ func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
 	slog.Info("SendMessage handler called")
 
 	var req SendMessageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		slog.Warn("SendMessage decode error", "error", err)
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "json") {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			slog.Warn("SendMessage decode error", "error", err)
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			slog.Warn("SendMessage parse form error", "error", err)
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+		req.Content = r.FormValue("content")
 	}
 	if req.Content == "" {
 		http.Error(w, `{"error":"content is required"}`, http.StatusBadRequest)

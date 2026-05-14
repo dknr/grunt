@@ -1,0 +1,210 @@
+package server
+
+import (
+	"fmt"
+	"html"
+	"net/http"
+	"strings"
+
+	"embed"
+
+	"grunt/client"
+)
+
+//go:embed templates/*.html
+var templateFS embed.FS
+
+//go:embed static
+var staticFS embed.FS
+
+// HandleIndexOrLogin serves the main index page or login page based on authentication.
+// It handles both GET / and GET /login, as well as POST /login for form submissions.
+func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
+	// POST /login - handle login form submission
+	if r.Method == http.MethodPost && r.URL.Path == "/login" {
+		handleLoginSubmit(w, r)
+		return
+	}
+
+	// GET / or GET /login - serve the appropriate page
+	token := ExtractToken(r)
+	
+	// Validate token if present
+	if token != "" {
+		if _, ok := ValidateToken(token); !ok {
+			token = "" // Treat invalid/expired token as no token
+		}
+	}
+
+	if token == "" {
+		// Not authenticated, serve login form
+		content, err := templateFS.ReadFile("templates/login.html")
+		if err != nil {
+			http.Error(w, "Template not found", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.Write(content)
+		return
+	}
+
+	// Authenticated, serve chat UI with initial messages
+	messages, err := DefaultStore.Sync(0, 50) // Load last 50 messages
+	if err != nil {
+		http.Error(w, "Failed to load messages", http.StatusInternalServerError)
+		return
+	}
+
+	// Render chat page with messages
+	content, err := templateFS.ReadFile("templates/chat.html")
+	if err != nil {
+		http.Error(w, "Template not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Replace placeholder with message HTML
+	messageHTML := renderMessages(messages)
+	html := string(content)
+	html = strings.Replace(html, "{{.Messages}}", messageHTML, 1)
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
+}
+
+// renderMessages converts a slice of broadcasts to HTML.
+func renderMessages(msgs []client.Broadcast) string {
+	var sb strings.Builder
+	for _, m := range msgs {
+		sb.WriteString(`<div class="message" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
+		sb.WriteString(`<strong>` + html.EscapeString(m.UserID) + `</strong>`)
+		sb.WriteString(`<span class="timestamp">` + m.Timestamp.Format("15:04") + `</span>`)
+		sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
+		sb.WriteString(`</div>`)
+	}
+	return sb.String()
+}
+
+// handleLoginSubmit processes login form submissions.
+func handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	user := r.FormValue("user")
+	password := r.FormValue("password")
+
+	if user == "" || password == "" {
+		http.Error(w, `{"error":"user and password are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Verify credentials
+	ok, err := DefaultStore.VerifyUser(user, password)
+	if err != nil {
+		http.Error(w, `{"error":"failed to verify user"}`, http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
+		return
+	}
+
+	// Generate token
+	token, err := DefaultHub.GenerateToken(user)
+	if err != nil {
+		http.Error(w, `{"error":"failed to generate token"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Set cookie for API requests
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// Redirect to chat page
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// HandleIndex serves the main index page.
+// It checks for authentication and serves either the chat UI or redirects to login.
+func HandleIndex(w http.ResponseWriter, r *http.Request) {
+	// Check if user is authenticated
+	token := ExtractToken(r)
+	
+	if token == "" {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	content, err := templateFS.ReadFile("templates/chat.html")
+	if err != nil {
+		http.Error(w, "Template not found", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Write(content)
+}
+
+// HandleLogin serves the login page and handles login submissions.
+func HandleLogin(w http.ResponseWriter, r *http.Request) {
+	// If already authenticated, redirect to chat
+	if ExtractToken(r) != "" {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		content, err := templateFS.ReadFile("templates/login.html")
+		if err != nil {
+			http.Error(w, "Template not found", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.Write(content)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		handleLoginSubmit(w, r)
+		return
+	}
+}
+
+// HandleStatic serves static files from the embedded static directory.
+func HandleStatic(w http.ResponseWriter, r *http.Request) {
+	// Extract the file path from the URL (remove "/static/" prefix)
+	// With Go 1.22+ pattern matching, the path is in r.URL.Path
+	filePath := strings.TrimPrefix(r.URL.Path, "/static/")
+
+	if filePath == "" || filePath == "/" {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	content, err := staticFS.ReadFile("static/" + filePath)
+	if err != nil {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+
+	// Set appropriate content type based on file extension
+	switch {
+	case strings.HasSuffix(filePath, ".js"):
+		w.Header().Set("Content-Type", "application/javascript")
+	case strings.HasSuffix(filePath, ".css"):
+		w.Header().Set("Content-Type", "text/css")
+	case strings.HasSuffix(filePath, ".html"):
+		w.Header().Set("Content-Type", "text/html")
+	default:
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+
+	w.Write(content)
+}

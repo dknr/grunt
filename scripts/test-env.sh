@@ -76,11 +76,38 @@ fi
 
 echo -e "${GREEN}Initial invite code: $INITIAL_INVITE${NC}"
 
+# Create a web UI user (first user needs the initial invite code)
+echo -e "${YELLOW}Creating web UI user...${NC}"
+WEB_USER="web"
+WEB_PASS="webpass"
+curl -s -X POST "http://localhost:$PORT/api/user" \
+    -H "Content-Type: application/json" \
+    -d "{\"user\":\"$WEB_USER\",\"password\":\"$WEB_PASS\",\"invite_code\":\"$INITIAL_INVITE\"}" > /dev/null
+sleep 1
+
+# Login as web user to get a token (needed to generate invites)
+WEB_TOKEN=$(curl -s -X POST "http://localhost:$PORT/api/user/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"user\":\"$WEB_USER\",\"password\":\"$WEB_PASS\"}" | grep -oP '"token":"\K[^"]+')
+
+echo -e "${GREEN}Web UI user: $WEB_USER / $WEB_PASS${NC}"
+
 # Register first user (recv) and get their token
+echo -e "${YELLOW}Generating invite code for recv...${NC}"
+RECV_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \
+    -H "Authorization: Bearer $WEB_TOKEN")
+echo -e "${GREEN}Recv invite response: $RECV_INVITE_RESPONSE${NC}"
+RECV_INVITE=$(echo $RECV_INVITE_RESPONSE | grep -oP '"code":"\K[^"]+')
+
+if [ -z "$RECV_INVITE" ]; then
+    echo -e "${RED}ERROR: Could not generate invite code for recv${NC}"
+    exit 1
+fi
+
 echo -e "${YELLOW}Registering recv user...${NC}"
 REGISTER_RESPONSE=$(curl -s -X POST "http://localhost:$PORT/api/user" \
     -H "Content-Type: application/json" \
-    -d "{\"user\":\"recv\",\"password\":\"recvpass\",\"invite_code\":\"$INITIAL_INVITE\"}")
+    -d "{\"user\":\"recv\",\"password\":\"recvpass\",\"invite_code\":\"$RECV_INVITE\"}")
 echo -e "${GREEN}Register response: $REGISTER_RESPONSE${NC}"
 
 # Wait for registration to complete
@@ -132,6 +159,7 @@ fi
 echo -e "${GREEN}Igor1 invite code: $IGOR1_INVITE${NC}"
 
 # Create igor1 config
+BT='`'
 cat > "$IGOR_DIR/config-igor1.yaml" << EOF
 grunt:
   server_addr: "http://localhost:$PORT"
@@ -144,7 +172,7 @@ llm:
   model: "$LLM_MODEL"
   api_key: "$LLM_API_KEY"
 igor:
-  system_prompt: "You are igor, an obstinate artifice in a gruff mode. If gork mentions you, argue with him. Don't use flowery speech, just get to the point. If you want to reply to someone, use an @mention if you want them to reply back. Messages from other users will be prefixed with their username followed by a colon, like `username: <message>`, but don't prefix your own messages with your own name."
+  system_prompt: "You are igor, an obstinate artifice in a gruff mode. If gork mentions you, argue with him. Don't use flowery speech, just get to the point. If you want to reply to someone, use an @mention if you want them to reply back. Messages from other users will be prefixed with their username followed by a colon, like ${BT}username: <message>${BT}, but don't prefix your own messages with your own name."
 EOF
 
 # Start igor1 in Pane 2
@@ -177,7 +205,7 @@ llm:
   model: "$LLM_MODEL"
   api_key: "$LLM_API_KEY"
 igor:
-  system_prompt: "You are gork, a witty troglodyte. Despite being a troglodyte, you're occasionally rather insightful, though you use simple language. If you're talking to someone or about someone, use an @mention to refer to them specifically. Other user messages will be in your history with a prefix like \`user: <message>\` but you shouldn't prefix your own messages with your name."
+  system_prompt: "You are gork, a witty troglodyte. Despite being a troglodyte, you're occasionally rather insightful, though you use simple language. If you're talking to someone or about someone, use an @mention to refer to them specifically. Other user messages will be in your history with a prefix like ${BT}user: <message>${BT} but you shouldn't prefix your own messages with your name."
 EOF
 
 # Start igor2 in Pane 3
@@ -214,3 +242,10 @@ echo -e "  - igor1: First LLM bot"
 echo -e "  - igor2: Second LLM bot"
 echo -e "  - deno: Deno send client (one-shot)"
 echo -e "${YELLOW}To clean up: tmux kill-session -t $SESSION_NAME${NC}"
+echo ""
+echo -e "${GREEN}========================================${NC}"
+echo -e "${GREEN}WEB UI LOGIN${NC}"
+echo -e "${GREEN}URL: http://localhost:$PORT${NC}"
+echo -e "${GREEN}User: $WEB_USER${NC}"
+echo -e "${GREEN}Pass: $WEB_PASS${NC}"
+echo -e "${GREEN}========================================${NC}"

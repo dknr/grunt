@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grunt</title>
+</head>
+<body>
+    <h1>Login</h1>
+    <form hx-post="/api/user/login" hx-target="#response" hx-swap="innerHTML">
+        <input name="user" placeholder="Username" required>
+        <input name="password" type="password" placeholder="Password" required>
+        <button type="submit">Login</button>
+    </form>
+    <div id="response"></div>
+</body>
+</html>

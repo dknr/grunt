@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grunt Login</title>
+    <style>
+        body { font-family: sans-serif; max-width: 400px; margin: 4rem auto; padding: 0 1rem; }
+        form { display: flex; flex-direction: column; gap: 0.5rem; }
+        input { padding: 0.5rem; }
+        button { padding: 0.5rem; }
+        #response { color: red; margin-top: 0.5rem; }
+    </style>
+</head>
+<body>
+    <h1>Login</h1>
+    <form method="post" action="/login">
+        <input name="user" placeholder="Username" required>
+        <input name="password" type="password" placeholder="Password" required>
+        <button type="submit">Login</button>
+    </form>
+    <div id="response"></div>
+</body>
+</html>

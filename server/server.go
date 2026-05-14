@@ -13,6 +13,10 @@ import (
 	"grunt/server/storage"
 )
 
+// Package-level variables for accessing store and hub from other handlers
+var DefaultStore *storage.Store
+var DefaultHub *Hub
+
 type Server struct {
 	hub      *Hub
 	store    *storage.Store
@@ -35,7 +39,7 @@ func NewWithPort(dbPath string, port int) *Server {
 	}
 	if count == 0 {
 		code := generateInviteCode()
-		expiresAt := time.Now().Add(10 * time.Minute)
+		expiresAt := time.Now().Add(24 * time.Hour)
 		if err := store.CreateInvite(code, expiresAt, ""); err != nil {
 			slog.Error("Failed to create initial invite", "error", err)
 			os.Exit(1)
@@ -45,6 +49,10 @@ func NewWithPort(dbPath string, port int) *Server {
 
 	hub := NewHub(store)
 	apiImpl := &apiImpl{store: store, hub: hub}
+
+	// Set package-level variables for access from other handlers
+	DefaultStore = store
+	DefaultHub = hub
 
 	mux := http.NewServeMux()
 	HandlerWithOptions(apiImpl, StdHTTPServerOptions{BaseRouter: mux})
@@ -73,6 +81,12 @@ func NewWithPort(dbPath string, port int) *Server {
 
 func (s *Server) setupRoutes() {
 	// SSE stream route is registered by the OpenAPI-generated HandlerWithOptions.
+
+	// Serve the main index page and login page
+	s.mux.HandleFunc("/", HandleIndexOrLogin)
+
+	// Serve static files
+	s.mux.HandleFunc("/static/", HandleStatic)
 }
 
 func (s *Server) Serve() error {
