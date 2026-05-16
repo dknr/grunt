@@ -5,12 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grunt Chat</title>
     <script src="/static/htmx.min.js"></script>
-    <script>
-        var isAdmin = {{.Admin}};
-    </script>
-    <script src="/static/htmx.min.js"></script>
     <style>
         body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+        h1 { display: flex; justify-content: space-between; align-items: center; }
+        nav a { color: #0066cc; text-decoration: none; font-size: 0.9em; }
+        nav a:hover { text-decoration: underline; }
         #messages { margin-bottom: 1rem; }
         .message { padding: 0.5rem; border-bottom: 1px solid #eee; }
         .message strong { color: #333; }
@@ -19,12 +18,10 @@
         form { display: flex; gap: 0.5rem; }
         form input { flex: 1; padding: 0.5rem; }
         form button { padding: 0.5rem 1rem; }
-        #admin-panel { margin-top: 2rem; padding: 1rem; border: 1px solid #ccc; border-radius: 4px; }
-        #invite-result { margin-top: 0.5rem; font-weight: bold; color: #333; word-break: break-all; }
     </style>
 </head>
 <body>
-    <h1>Chat</h1>
+    <h1>Chat <nav><a href="/settings">Settings</a></nav></h1>
     <div id="messages">{{.Messages}}</div>
     <div id="events"></div>
     <form hx-post="/api/chat/message"
@@ -36,15 +33,9 @@
         <button type="submit">Send</button>
     </form>
 
-    <!-- Admin Panel (visible only to admins) -->
-    <div id="admin-panel" class="hidden">
-        <h2>Admin Panel</h2>
-        <p>Generate a new invite code for registration:</p>
-        <button type="button" onclick="generateInvite()">Generate Invite Code</button>
-        <div id="invite-result"></div>
-    </div>
-
     <script>
+        var isAdmin = {{.Admin}};
+
         // Connect to SSE stream using native EventSource
         var source = new EventSource('/api/chat/stream');
         source.addEventListener('message', function(e) {
@@ -71,26 +62,6 @@
             div.textContent = data.user + ' ' + data.event;
             document.getElementById('events').appendChild(div);
         });
-
-        // Show admin panel if user is admin
-        if (isAdmin) {
-            document.getElementById('admin-panel').classList.remove('hidden');
-        }
-
-        // Generate invite code via API
-        function generateInvite() {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', '/api/user/invite', true);
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    var resp = JSON.parse(xhr.responseText);
-                    document.getElementById('invite-result').textContent = 'New invite code: ' + resp.code;
-                } else {
-                    document.getElementById('invite-result').textContent = 'Failed to generate invite code.';
-                }
-            };
-            xhr.send();
-        }
     </script>
 </body>
 </html>

@@ -88,6 +88,9 @@ func (s *Server) setupRoutes() {
 	// Serve registration form submission
 	s.mux.HandleFunc("/register", handleRegisterSubmit)
 
+	// Serve settings page
+	s.mux.HandleFunc("/settings", HandleSettings)
+
 	// Serve static files
 	s.mux.HandleFunc("/static/", HandleStatic)
 }

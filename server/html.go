@@ -78,6 +78,9 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.Write([]byte(html))
 }
 
@@ -200,6 +203,41 @@ func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect to chat page
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// HandleSettings serves the settings page for authenticated users.
+// It displays user actions and admin-only actions based on the current user's role.
+func HandleSettings(w http.ResponseWriter, r *http.Request) {
+	token := ExtractToken(r)
+
+	if token == "" {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	userID, ok := ValidateToken(token, DefaultStore)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	isAdmin, _ := DefaultStore.IsUserAdmin(userID)
+
+	content, err := templateFS.ReadFile("templates/settings.html")
+	if err != nil {
+		http.Error(w, "Template not found", http.StatusInternalServerError)
+		return
+	}
+
+	html := string(content)
+	if isAdmin {
+		html = strings.Replace(html, "{{.Admin}}", "true", 1)
+	} else {
+		html = strings.Replace(html, "{{.Admin}}", "false", 1)
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(html))
 }
 
 // HandleIndex serves the main index page.
