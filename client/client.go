@@ -18,6 +18,7 @@ type Client struct {
 	HTTPClient *http.Client
 	UserID     string
 	Token      string
+	APIKey     string
 
 	// Channels for communication
 	messageChan chan []byte // raw SSE messages
@@ -66,13 +67,16 @@ func (c *Client) Register(password, inviteCode string) error {
 	return nil
 }
 
-// Invite generates a new invite code using the current token.
+// Invite generates a new invite code using the current token or API key.
 func (c *Client) Invite() (string, time.Time, error) {
 	req, err := http.NewRequest(http.MethodGet, c.ServerAddr+"/api/user/invite", nil)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to create invite request: %w", err)
 	}
-	if c.Token != "" {
+
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	} else if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 
@@ -134,7 +138,7 @@ func (c *Client) Login(password string) error {
 
 // Connect establishes an SSE connection to the grunt server.
 // Message listening is not started automatically; use StartListening() to begin.
-// Uses the stored token for authentication via Authorization: Bearer header.
+// Uses APIKey if set, otherwise falls back to Token via Authorization: Bearer header.
 func (c *Client) Connect() error {
 	c.mutex.Lock()
 	if c.connected {
@@ -143,15 +147,19 @@ func (c *Client) Connect() error {
 	}
 	c.mutex.Unlock()
 
-	if c.Token == "" {
-		return fmt.Errorf("no token available; call Login() first")
-	}
-
 	req, err := http.NewRequest("GET", c.ServerAddr+"/api/chat/stream", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create SSE request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	} else if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	} else {
+		return fmt.Errorf("no authentication available; call Login() or set APIKey")
+	}
+
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := c.HTTPClient.Do(req)
@@ -174,7 +182,7 @@ func (c *Client) Connect() error {
 
 // SyncHistory fetches message history from the server since the given ID.
 // If since is 0, it fetches the most recent messages (up to a server-defined limit).
-// Requires authentication via the stored token.
+// Requires authentication via APIKey or Token.
 func (c *Client) SyncHistory(since int) ([]Broadcast, error) {
 	endpoint := fmt.Sprintf("/api/chat/sync?since=%d", since)
 	if since == 0 {
@@ -185,7 +193,10 @@ func (c *Client) SyncHistory(since int) ([]Broadcast, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sync request: %w", err)
 	}
-	if c.Token != "" {
+
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	} else if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
 
@@ -238,8 +249,8 @@ func (c *Client) StopListening() {
 
 // SendMessage sends a message to the grunt server via HTTP POST.
 func (c *Client) SendMessage(content string) error {
-	if c.Token == "" {
-		return fmt.Errorf("no token available; call Login() first")
+	if c.Token == "" && c.APIKey == "" {
+		return fmt.Errorf("no authentication available; call Login() or set APIKey")
 	}
 
 	payload, err := json.Marshal(map[string]string{
@@ -253,7 +264,12 @@ func (c *Client) SendMessage(content string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create send message request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.HTTPClient.Do(req)

@@ -26,6 +26,45 @@ const (
 	BearerAuthScopes bearerAuthContextKey = "BearerAuth.Scopes"
 )
 
+// APIKeyInfoFull defines model for APIKeyInfoFull.
+type APIKeyInfoFull struct {
+	// CreatedAt Creation time
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// Id Key ID
+	Id *int64 `json:"id,omitempty"`
+
+	// Name Optional label
+	Name *string `json:"name,omitempty"`
+
+	// UserId User ID the key belongs to
+	UserId *string `json:"user_id,omitempty"`
+}
+
+// APIKeyResponse defines model for APIKeyResponse.
+type APIKeyResponse struct {
+	// KeyId Key ID
+	KeyId *int64 `json:"key_id,omitempty"`
+
+	// Secret The raw API key (shown only once)
+	Secret *string `json:"secret,omitempty"`
+}
+
+// AdminCreateAPIKeyRequest defines model for AdminCreateAPIKeyRequest.
+type AdminCreateAPIKeyRequest struct {
+	// Name Optional label for the key
+	Name *string `json:"name,omitempty"`
+
+	// UserId The user ID to create the API key for
+	UserId string `json:"user_id"`
+}
+
+// AdminCreateUserRequest defines model for AdminCreateUserRequest.
+type AdminCreateUserRequest struct {
+	// User Username
+	User string `json:"user"`
+}
+
 // Broadcast defines model for Broadcast.
 type Broadcast struct {
 	ClientId  *string    `json:"client_id,omitempty"`
@@ -106,6 +145,12 @@ type SyncMessagesParams struct {
 	Last *int64 `form:"last,omitempty" json:"last,omitempty"`
 }
 
+// AdminCreateAPIKeyJSONRequestBody defines body for AdminCreateAPIKey for application/json ContentType.
+type AdminCreateAPIKeyJSONRequestBody = AdminCreateAPIKeyRequest
+
+// AdminCreateUserJSONRequestBody defines body for AdminCreateUser for application/json ContentType.
+type AdminCreateUserJSONRequestBody = AdminCreateUserRequest
+
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
 
@@ -117,6 +162,18 @@ type LoginUserJSONRequestBody = LoginRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List all API keys (admin only)
+	// (GET /api/admin/api-keys)
+	AdminListAPIKeys(w http.ResponseWriter, r *http.Request)
+	// Create a new API key (admin only)
+	// (POST /api/admin/api-keys)
+	AdminCreateAPIKey(w http.ResponseWriter, r *http.Request)
+	// Revoke an API key (admin only)
+	// (DELETE /api/admin/api-keys/{keyId})
+	AdminRevokeAPIKey(w http.ResponseWriter, r *http.Request, keyId int64)
+	// Create a new user (admin only)
+	// (POST /api/admin/users)
+	AdminCreateUser(w http.ResponseWriter, r *http.Request)
 	// Send a message
 	// (POST /api/chat/message)
 	SendMessage(w http.ResponseWriter, r *http.Request)
@@ -145,6 +202,98 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// AdminListAPIKeys operation middleware
+func (siw *ServerInterfaceWrapper) AdminListAPIKeys(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminListAPIKeys(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCreateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) AdminCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCreateAPIKey(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminRevokeAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) AdminRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "keyId" -------------
+	var keyId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "keyId", r.PathValue("keyId"), &keyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keyId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminRevokeAPIKey(w, r, keyId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdminCreateUser operation middleware
+func (siw *ServerInterfaceWrapper) AdminCreateUser(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdminCreateUser(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // SendMessage operation middleware
 func (siw *ServerInterfaceWrapper) SendMessage(w http.ResponseWriter, r *http.Request) {
@@ -400,6 +549,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/admin/api-keys", wrapper.AdminListAPIKeys)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/api-keys", wrapper.AdminCreateAPIKey)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/admin/api-keys/{keyId}", wrapper.AdminRevokeAPIKey)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/admin/users", wrapper.AdminCreateUser)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/chat/message", wrapper.SendMessage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chat/stream", wrapper.StreamMessages)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/chat/sync", wrapper.SyncMessages)
@@ -415,26 +568,34 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"AP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

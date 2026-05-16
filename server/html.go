@@ -31,7 +31,7 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 	
 	// Validate token if present
 	if token != "" {
-		if _, ok := ValidateToken(token); !ok {
+		if _, ok := ValidateToken(token, DefaultStore); !ok {
 			token = "" // Treat invalid/expired token as no token
 		}
 	}

@@ -3,7 +3,7 @@ set -e
 
 # Grunt Test Environment Orchestrator
 # Starts grunt server, recv, repl, and two igor instances in a tmux session
-# Automatically handles the invite code chain
+# Automatically handles the invite code chain and API key generation for bots
 
 SESSION_NAME="grunt-test"
 PORT=54765
@@ -76,8 +76,8 @@ fi
 
 echo -e "${GREEN}Initial invite code: $INITIAL_INVITE${NC}"
 
-# Create a web UI user (first user needs the initial invite code)
-echo -e "${YELLOW}Creating web UI user...${NC}"
+# Create a web UI user (first user becomes admin automatically)
+echo -e "${YELLOW}Creating web UI user (admin)...${NC}"
 WEB_USER="web"
 WEB_PASS="webpass"
 curl -s -X POST "http://localhost:$PORT/api/user" \
@@ -85,19 +85,68 @@ curl -s -X POST "http://localhost:$PORT/api/user" \
     -d "{\"user\":\"$WEB_USER\",\"password\":\"$WEB_PASS\",\"invite_code\":\"$INITIAL_INVITE\"}" > /dev/null
 sleep 1
 
-# Login as web user to get a token (needed to generate invites)
+# Login as web user to get a token (needed for admin operations)
 WEB_TOKEN=$(curl -s -X POST "http://localhost:$PORT/api/user/login" \
     -H "Content-Type: application/json" \
     -d "{\"user\":\"$WEB_USER\",\"password\":\"$WEB_PASS\"}" | grep -oP '"token":"\K[^"]+')
 
-echo -e "${GREEN}Web UI user: $WEB_USER / $WEB_PASS${NC}"
+if [ -z "$WEB_TOKEN" ]; then
+    echo -e "${RED}ERROR: Could not login as web user${NC}"
+    exit 1
+fi
 
-# Register first user (recv) and get their token
+echo -e "${GREEN}Web UI user (admin): $WEB_USER / $WEB_PASS${NC}"
+
+# Create igor bot user via admin endpoint (no password)
+echo -e "${YELLOW}Creating igor bot user via admin...${NC}"
+curl -s -X POST "http://localhost:$PORT/api/admin/users" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $WEB_TOKEN" \
+    -d '{"user":"igor"}' > /dev/null
+
+# Create gork bot user via admin endpoint (no password)
+echo -e "${YELLOW}Creating gork bot user via admin...${NC}"
+curl -s -X POST "http://localhost:$PORT/api/admin/users" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $WEB_TOKEN" \
+    -d '{"user":"gork"}' > /dev/null
+
+# Generate API key for igor via admin endpoint
+echo -e "${YELLOW}Generating API key for igor...${NC}"
+IGOR_KEY_RESPONSE=$(curl -s -X POST "http://localhost:$PORT/api/admin/api-keys" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $WEB_TOKEN" \
+    -d '{"user_id":"igor","name":"igor-bot"}')
+echo -e "${GREEN}Igor key response: $IGOR_KEY_RESPONSE${NC}"
+IGOR_API_KEY=$(echo "$IGOR_KEY_RESPONSE" | grep -oP '"secret":"\K[^"]+')
+
+if [ -z "$IGOR_API_KEY" ]; then
+    echo -e "${RED}ERROR: Could not generate API key for igor${NC}"
+    exit 1
+fi
+echo -e "${GREEN}Igor API key: $IGOR_API_KEY${NC}"
+
+# Generate API key for gork via admin endpoint
+echo -e "${YELLOW}Generating API key for gork...${NC}"
+GORK_KEY_RESPONSE=$(curl -s -X POST "http://localhost:$PORT/api/admin/api-keys" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $WEB_TOKEN" \
+    -d '{"user_id":"gork","name":"gork-bot"}')
+echo -e "${GREEN}Gork key response: $GORK_KEY_RESPONSE${NC}"
+GORK_API_KEY=$(echo "$GORK_KEY_RESPONSE" | grep -oP '"secret":"\K[^"]+')
+
+if [ -z "$GORK_API_KEY" ]; then
+    echo -e "${RED}ERROR: Could not generate API key for gork${NC}"
+    exit 1
+fi
+echo -e "${GREEN}Gork API key: $GORK_API_KEY${NC}"
+
+# Generate invite code for recv (needs password-based auth)
 echo -e "${YELLOW}Generating invite code for recv...${NC}"
 RECV_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \
     -H "Authorization: Bearer $WEB_TOKEN")
 echo -e "${GREEN}Recv invite response: $RECV_INVITE_RESPONSE${NC}"
-RECV_INVITE=$(echo $RECV_INVITE_RESPONSE | grep -oP '"code":"\K[^"]+')
+RECV_INVITE=$(echo "$RECV_INVITE_RESPONSE" | grep -oP '"code":"\K[^"]+')
 
 if [ -z "$RECV_INVITE" ]; then
     echo -e "${RED}ERROR: Could not generate invite code for recv${NC}"
@@ -116,7 +165,7 @@ sleep 1
 LOGIN_RESPONSE=$(curl -s -X POST "http://localhost:$PORT/api/user/login" \
     -H "Content-Type: application/json" \
     -d '{"user":"recv","password":"recvpass"}')
-RECV_TOKEN=$(echo $LOGIN_RESPONSE | grep -oP '"token":"\K[^"]+')
+RECV_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -oP '"token":"\K[^"]+')
 
 if [ -z "$RECV_TOKEN" ]; then
     echo -e "${RED}ERROR: Could not login as recv user${NC}"
@@ -129,7 +178,7 @@ echo -e "${YELLOW}Generating invite code for repl...${NC}"
 REPL_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \
     -H "Authorization: Bearer $RECV_TOKEN")
 echo -e "${GREEN}Repl invite response: $REPL_INVITE_RESPONSE${NC}"
-REPL_INVITE=$(echo $REPL_INVITE_RESPONSE | grep -oP '"code":"\K[^"]+')
+REPL_INVITE=$(echo "$REPL_INVITE_RESPONSE" | grep -oP '"code":"\K[^"]+')
 
 if [ -z "$REPL_INVITE" ]; then
     echo -e "${RED}ERROR: Could not generate invite code for repl${NC}"
@@ -145,27 +194,13 @@ tmux send-keys -t "$SESSION_NAME:clients" "cd $GRUNT_DIR && export GRUNT_LOGIN=r
 tmux split-window -v -t "$SESSION_NAME:clients"
 tmux send-keys -t "$SESSION_NAME:clients.1" "cd $GRUNT_DIR && export GRUNT_LOGIN=recv:recvpass && ./dist/grunt repl --server http://localhost:$PORT --invite-code $REPL_INVITE" C-m
 
-# Generate invite code for igor1 using repl's token (we'll use recv's token for now)
-echo -e "${YELLOW}Generating invite code for igor1...${NC}"
-IGOR1_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \
-    -H "Authorization: Bearer $RECV_TOKEN")
-IGOR1_INVITE=$(echo $IGOR1_INVITE_RESPONSE | grep -oP '"code":"\K[^"]+')
-
-if [ -z "$IGOR1_INVITE" ]; then
-    echo -e "${RED}ERROR: Could not generate invite code for igor1${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}Igor1 invite code: $IGOR1_INVITE${NC}"
-
-# Create igor1 config
+# Create igor1 config with API key
 BT='`'
 cat > "$IGOR_DIR/config-igor1.yaml" << EOF
 grunt:
   server_addr: "http://localhost:$PORT"
   user_id: "igor"
-  password: "shinyrock"
-  invite_code: "$IGOR1_INVITE"
+  api_key: "$IGOR_API_KEY"
   mention: "@igor"
 llm:
   base_url: "$LLM_BASE_URL"
@@ -179,26 +214,12 @@ EOF
 tmux new-window -t "$SESSION_NAME" -n "igor1"
 tmux send-keys -t "$SESSION_NAME:igor1" "cd $IGOR_DIR && ./dist/igor --config config-igor1.yaml" C-m
 
-# Generate invite code for igor2
-echo -e "${YELLOW}Generating invite code for igor2...${NC}"
-IGOR2_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \
-    -H "Authorization: Bearer $RECV_TOKEN")
-IGOR2_INVITE=$(echo $IGOR2_INVITE_RESPONSE | grep -oP '"code":"\K[^"]+')
-
-if [ -z "$IGOR2_INVITE" ]; then
-    echo -e "${RED}ERROR: Could not generate invite code for igor2${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}Igor2 invite code: $IGOR2_INVITE${NC}"
-
-# Create igor2 config
+# Create igor2 config with API key
 cat > "$IGOR_DIR/config-igor2.yaml" << EOF
 grunt:
   server_addr: "http://localhost:$PORT"
   user_id: "gork"
-  password: "shinyrock"
-  invite_code: "$IGOR2_INVITE"
+  api_key: "$GORK_API_KEY"
   mention: "@gork"
 llm:
   base_url: "$LLM_BASE_URL"
@@ -216,7 +237,7 @@ tmux send-keys -t "$SESSION_NAME:igor2" "cd $IGOR_DIR && ./dist/igor --config co
 echo -e "${YELLOW}Generating invite code for deno...${NC}"
 DENO_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \
     -H "Authorization: Bearer $RECV_TOKEN")
-DENO_INVITE=$(echo $DENO_INVITE_RESPONSE | grep -oP '"code":"\K[^"]+')
+DENO_INVITE=$(echo "$DENO_INVITE_RESPONSE" | grep -oP '"code":"\K[^"]+')
 
 if [ -z "$DENO_INVITE" ]; then
     echo -e "${RED}ERROR: Could not generate invite code for deno${NC}"
@@ -238,8 +259,8 @@ echo -e "${GREEN}Use 'tmux attach -t $SESSION_NAME' to view${NC}"
 echo -e "${GREEN}Panes:${NC}"
 echo -e "  - server: Grunt server logs"
 echo -e "  - clients: recv (top) and repl (bottom)"
-echo -e "  - igor1: First LLM bot"
-echo -e "  - igor2: Second LLM bot"
+echo -e "  - igor1: First LLM bot (API key auth)"
+echo -e "  - igor2: Second LLM bot (API key auth)"
 echo -e "  - deno: Deno send client (one-shot)"
 echo -e "${YELLOW}To clean up: tmux kill-session -t $SESSION_NAME${NC}"
 echo ""

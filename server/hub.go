@@ -45,22 +45,6 @@ func (h *Hub) GenerateToken(userID string) (string, error) {
 	return token, nil
 }
 
-// ValidateToken checks if the given token is valid and returns the associated user ID.
-func ValidateToken(token string) (string, bool) {
-	tokenStore.mu.RLock()
-	defer tokenStore.mu.RUnlock()
-	entry, ok := tokenStore.tokens[token]
-	if !ok {
-		return "", false
-	}
-	if time.Now().After(entry.Expiry) {
-		// Token expired, clean it up
-		delete(tokenStore.tokens, token)
-		return "", false
-	}
-	return entry.UserID, true
-}
-
 type Hub struct {
 	subscribers  map[string]*Subscriber
 	mu           sync.RWMutex
@@ -207,7 +191,7 @@ func (h *Hub) HandleSSEStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := ValidateToken(token)
+	userID, ok := ValidateToken(token, h.store)
 	if !ok {
 		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
 		return

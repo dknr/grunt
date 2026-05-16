@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -32,11 +33,28 @@ func New(dsn string) (*Store, error) {
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
 			user TEXT PRIMARY KEY,
-			password_hash TEXT NOT NULL DEFAULT ''
+			password_hash TEXT DEFAULT NULL,
+			is_admin BOOLEAN DEFAULT 0
 		)
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("create users table: %w", err)
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS api_keys (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id TEXT NOT NULL,
+			admin_user_id TEXT NOT NULL,
+			key_hash TEXT NOT NULL,
+			name TEXT,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (user_id) REFERENCES users(user),
+			FOREIGN KEY (admin_user_id) REFERENCES users(user)
+		)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("create api_keys table: %w", err)
 	}
 
 	_, err = db.Exec(`
@@ -69,16 +87,46 @@ func New(dsn string) (*Store, error) {
 }
 
 func (s *Store) CreateUser(user, password string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("hash password: %w", err)
+	var hash *string
+	if password != "" {
+		h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hash password: %w", err)
+		}
+		str := string(h)
+		hash = &str
 	}
-	_, err = s.db.Exec("INSERT OR IGNORE INTO users (user, password_hash) VALUES (?, ?)", user, string(hash))
+	_, err := s.db.Exec(
+		"INSERT OR IGNORE INTO users (user, password_hash) VALUES (?, ?)",
+		user, hash,
+	)
 	return err
 }
 
+func (s *Store) CreateUserNoPassword(user string) error {
+	_, err := s.db.Exec(
+		"INSERT OR IGNORE INTO users (user, password_hash) VALUES (?, NULL)",
+		user,
+	)
+	return err
+}
+
+func (s *Store) SetUserAdmin(userID string) error {
+	_, err := s.db.Exec("UPDATE users SET is_admin = 1 WHERE user = ?", userID)
+	return err
+}
+
+func (s *Store) IsUserAdmin(userID string) (bool, error) {
+	var isAdmin bool
+	err := s.db.QueryRow("SELECT is_admin FROM users WHERE user = ?", userID).Scan(&isAdmin)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return isAdmin, err
+}
+
 func (s *Store) VerifyUser(user, password string) (bool, error) {
-	var hash string
+	var hash *string
 	err := s.db.QueryRow("SELECT password_hash FROM users WHERE user = ?", user).Scan(&hash)
 	if err == sql.ErrNoRows {
 		return false, nil
@@ -86,7 +134,10 @@ func (s *Store) VerifyUser(user, password string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil, nil
+	if hash == nil {
+		return false, nil
+	}
+	return bcrypt.CompareHashAndPassword([]byte(*hash), []byte(password)) == nil, nil
 }
 
 func (s *Store) Close() error {
@@ -180,11 +231,98 @@ func (s *Store) Sync(since int, limit int) ([]client.Broadcast, error) {
 	}
 
 	if limit > 0 {
-		// Reverse to return oldest-first
 		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
 			msgs[i], msgs[j] = msgs[j], msgs[i]
 		}
 	}
 
 	return msgs, rows.Err()
+}
+
+// API Key functions
+
+func (s *Store) CreateAPIKey(userID, adminUserID, keyHash, name string) error {
+	_, err := s.db.Exec(
+		"INSERT INTO api_keys (user_id, admin_user_id, key_hash, name) VALUES (?, ?, ?, ?)",
+		userID, adminUserID, keyHash, name,
+	)
+	return err
+}
+
+func (s *Store) GetAPIKeyByHash(keyHash string) (string, error) {
+	var userID string
+	err := s.db.QueryRow("SELECT user_id FROM api_keys WHERE key_hash = ?", keyHash).Scan(&userID)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("key not found")
+	}
+	return userID, err
+}
+
+func (s *Store) ListAPIKeys(userID string) ([]APIKeyInfo, error) {
+	rows, err := s.db.Query(
+		"SELECT id, name, created_at FROM api_keys WHERE user_id = ? ORDER BY created_at DESC",
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []APIKeyInfo
+	for rows.Next() {
+		var k APIKeyInfo
+		var ts string
+		if err := rows.Scan(&k.ID, &k.Name, &ts); err != nil {
+			return nil, err
+		}
+		k.CreatedAt, _ = time.Parse(time.RFC3339, ts)
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+func (s *Store) ListAllAPIKeys() ([]APIKeyInfoFull, error) {
+	rows, err := s.db.Query(
+		"SELECT id, user_id, name, created_at FROM api_keys ORDER BY created_at DESC",
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []APIKeyInfoFull
+	for rows.Next() {
+		var k APIKeyInfoFull
+		var ts string
+		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &ts); err != nil {
+			return nil, err
+		}
+		k.CreatedAt, _ = time.Parse(time.RFC3339, ts)
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+func (s *Store) RevokeAPIKey(keyID int64) error {
+	_, err := s.db.Exec("DELETE FROM api_keys WHERE id = ?", keyID)
+	return err
+}
+
+// HashAPIKey computes the SHA-256 hash of an API key string.
+func HashAPIKey(key string) string {
+	h := sha256.Sum256([]byte(key))
+	return fmt.Sprintf("%x", h)
+}
+
+type APIKeyInfo struct {
+	ID        int64     `json:"id"`
+	Name      *string   `json:"name,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type APIKeyInfoFull struct {
+	ID        int64     `json:"id"`
+	UserID    string    `json:"user_id"`
+	Name      *string   `json:"name,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }

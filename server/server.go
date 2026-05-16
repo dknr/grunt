@@ -70,7 +70,7 @@ func NewWithPort(dbPath string, port int) *Server {
 	// Setup HTTP server for graceful shutdown
 	s.httpSrv = &http.Server{
 		Addr:         ":" + strconv.Itoa(port),
-		Handler:      authMiddleware(s.mux),
+		Handler:      authMiddleware(s.mux, s.store),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 0, // 0 = no timeout (required for SSE long-lived connections)
 		IdleTimeout:  0, // 0 = no timeout (required for SSE long-lived connections)
