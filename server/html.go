@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"html"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -30,9 +31,13 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 	token := ExtractToken(r)
 	
 	// Validate token if present
+	var isAdmin bool
 	if token != "" {
-		if _, ok := ValidateToken(token, DefaultStore); !ok {
+		userID, ok := ValidateToken(token, DefaultStore)
+		if !ok {
 			token = "" // Treat invalid/expired token as no token
+		} else {
+			isAdmin, _ = DefaultStore.IsUserAdmin(userID)
 		}
 	}
 
@@ -62,10 +67,15 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Replace placeholder with message HTML
+	// Replace placeholders with message HTML and admin status
 	messageHTML := renderMessages(messages)
 	html := string(content)
 	html = strings.Replace(html, "{{.Messages}}", messageHTML, 1)
+	if isAdmin {
+		html = strings.Replace(html, "{{.Admin}}", "true", 1)
+	} else {
+		html = strings.Replace(html, "{{.Admin}}", "false", 1)
+	}
 
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
@@ -112,6 +122,67 @@ func handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate token
+	token, err := DefaultHub.GenerateToken(user)
+	if err != nil {
+		http.Error(w, `{"error":"failed to generate token"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Set cookie for API requests
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// Redirect to chat page
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// handleRegisterSubmit processes registration form submissions.
+func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	user := r.FormValue("user")
+	password := r.FormValue("password")
+	inviteCode := r.FormValue("invite_code")
+
+	if user == "" || password == "" || inviteCode == "" {
+		http.Error(w, `{"error":"user, password, and invite code are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	// Validate invite code
+	valid, err := DefaultStore.ValidateInvite(inviteCode)
+	if err != nil {
+		http.Error(w, `{"error":"failed to validate invite code"}`, http.StatusInternalServerError)
+		return
+	}
+	if !valid {
+		http.Error(w, `{"error":"invalid or expired invite code"}`, http.StatusUnauthorized)
+		return
+	}
+
+	// Create user
+	if err := DefaultStore.CreateUser(user, password); err != nil {
+		// Check if user already exists
+		http.Error(w, `{"error":"user already exists"}`, http.StatusConflict)
+		return
+	}
+
+	// Mark invite as used
+	if err := DefaultStore.MarkInviteUsed(inviteCode, user); err != nil {
+		slog.Error("Error marking invite as used", "error", err)
+		// Don't fail registration if invite marking fails
+	}
+
+	// Generate token for auto-login after registration
 	token, err := DefaultHub.GenerateToken(user)
 	if err != nil {
 		http.Error(w, `{"error":"failed to generate token"}`, http.StatusInternalServerError)

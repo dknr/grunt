@@ -85,6 +85,9 @@ func (s *Server) setupRoutes() {
 	// Serve the main index page and login page
 	s.mux.HandleFunc("/", HandleIndexOrLogin)
 
+	// Serve registration form submission
+	s.mux.HandleFunc("/register", handleRegisterSubmit)
+
 	// Serve static files
 	s.mux.HandleFunc("/static/", HandleStatic)
 }

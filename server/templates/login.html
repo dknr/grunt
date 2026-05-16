@@ -10,15 +10,53 @@
         input { padding: 0.5rem; }
         button { padding: 0.5rem; }
         #response { color: red; margin-top: 0.5rem; }
+        .toggle-btn {
+            background: none;
+            border: none;
+            color: #0066cc;
+            cursor: pointer;
+            text-decoration: underline;
+            font-size: 0.9em;
+            margin-top: 0.5rem;
+        }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
-    <h1>Login</h1>
-    <form method="post" action="/login">
+    <h1 id="form-title">Login</h1>
+
+    <!-- Login form -->
+    <form method="post" action="/login" id="login-form">
         <input name="user" placeholder="Username" required>
         <input name="password" type="password" placeholder="Password" required>
         <button type="submit">Login</button>
     </form>
+
+    <!-- Register form -->
+    <form method="post" action="/register" id="register-form" class="hidden">
+        <input name="user" placeholder="Username" required>
+        <input name="password" type="password" placeholder="Password" required>
+        <input name="invite_code" placeholder="Invite code" required>
+        <button type="submit">Register</button>
+    </form>
+
+    <!-- Toggle between login and register -->
+    <button type="button" class="toggle-btn" onclick="showRegister()">Don't have an account? Register</button>
     <div id="response"></div>
+
+    <script>
+        function showLogin() {
+            document.getElementById('login-form').classList.remove('hidden');
+            document.getElementById('register-form').classList.add('hidden');
+            document.getElementById('form-title').textContent = 'Login';
+            document.querySelector('.toggle-btn').textContent = "Don't have an account? Register";
+        }
+        function showRegister() {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('register-form').classList.remove('hidden');
+            document.getElementById('form-title').textContent = 'Register';
+            document.querySelector('.toggle-btn').textContent = "Already have an account? Login";
+        }
+    </script>
 </body>
 </html>

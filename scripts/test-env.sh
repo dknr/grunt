@@ -97,6 +97,20 @@ fi
 
 echo -e "${GREEN}Web UI user (admin): $WEB_USER / $WEB_PASS${NC}"
 
+# Generate invite code for new users via web UI
+echo -e "${YELLOW}Generating invite code for new user...${NC}"
+WEB_UI_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \
+    -H "Authorization: Bearer $WEB_TOKEN")
+echo -e "${GREEN}Web UI invite response: $WEB_UI_INVITE_RESPONSE${NC}"
+WEB_UI_INVITE=$(echo "$WEB_UI_INVITE_RESPONSE" | grep -oP '"code":"\K[^"]+')
+
+if [ -z "$WEB_UI_INVITE" ]; then
+    echo -e "${RED}ERROR: Could not generate invite code for new user${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Web UI invite code for new user: $WEB_UI_INVITE${NC}"
+
 # Create igor bot user via admin endpoint (no password)
 echo -e "${YELLOW}Creating igor bot user via admin...${NC}"
 curl -s -X POST "http://localhost:$PORT/api/admin/users" \
@@ -265,8 +279,8 @@ echo -e "  - deno: Deno send client (one-shot)"
 echo -e "${YELLOW}To clean up: tmux kill-session -t $SESSION_NAME${NC}"
 echo ""
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}WEB UI LOGIN${NC}"
+echo -e "${GREEN}WEB UI ACCESS${NC}"
 echo -e "${GREEN}URL: http://localhost:$PORT${NC}"
-echo -e "${GREEN}User: $WEB_USER${NC}"
-echo -e "${GREEN}Pass: $WEB_PASS${NC}"
+echo -e "${GREEN}Admin login: $WEB_USER / $WEB_PASS${NC}"
+echo -e "${GREEN}Invite for new user: $WEB_UI_INVITE${NC}"
 echo -e "${GREEN}========================================${NC}"

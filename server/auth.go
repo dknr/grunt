@@ -80,6 +80,9 @@ func authMiddleware(next http.Handler, store *storage.Store) http.Handler {
 		case r.Method == http.MethodPost && r.URL.Path == "/login":
 			next.ServeHTTP(w, r)
 			return
+		case r.Method == http.MethodPost && r.URL.Path == "/register":
+			next.ServeHTTP(w, r)
+			return
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/static/"):
 			next.ServeHTTP(w, r)
 			return
