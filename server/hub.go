@@ -184,18 +184,13 @@ func (h *Hub) HandleSSEStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Authenticate using the unified ExtractToken function
-	token := ExtractToken(r)
-	if token == "" {
+	// Authenticate via middleware (already validated)
+	if !AuthenticatedFromContext(r) {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
 
-	userID, ok := ValidateToken(token, h.store)
-	if !ok {
-		http.Error(w, `{"error":"invalid token"}`, http.StatusUnauthorized)
-		return
-	}
+	userID := UserIDFromContext(r)
 
 	// Ensure response supports flushing
 	flusher, ok := w.(http.Flusher)
