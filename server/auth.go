@@ -12,8 +12,9 @@ import (
 type contextKey string
 
 const (
-	userIDKey contextKey = "userID"
-	isAdminKey contextKey = "isAdmin"
+	userIDKey        contextKey = "userID"
+	isAdminKey       contextKey = "isAdmin"
+	authenticatedKey contextKey = "authenticated"
 )
 
 // ExtractToken checks for a token in the Authorization header, Cookie, or Query parameter.
@@ -62,52 +63,30 @@ func ValidateToken(token string, store *storage.Store) (string, bool) {
 	return entry.UserID, true
 }
 
-// authMiddleware applies authentication to requests that require it.
-// Public endpoints are exempt.
+// authMiddleware applies authentication to all requests.
+// It populates the request context with userID, isAdmin, and authenticated status.
+// Handlers should check AuthenticatedFromContext() to determine if they need to reject unauthenticated requests.
 func authMiddleware(next http.Handler, store *storage.Store) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Public endpoints that don't require auth
-		switch {
-		case r.Method == http.MethodPost && (r.URL.Path == "/api/user" || r.URL.Path == "/api/user/login"):
-			next.ServeHTTP(w, r)
-			return
-		case r.Method == http.MethodGet && r.URL.Path == "/":
-			next.ServeHTTP(w, r)
-			return
-		case r.Method == http.MethodGet && r.URL.Path == "/login":
-			next.ServeHTTP(w, r)
-			return
-		case r.Method == http.MethodPost && r.URL.Path == "/login":
-			next.ServeHTTP(w, r)
-			return
-		case r.Method == http.MethodPost && r.URL.Path == "/register":
-			next.ServeHTTP(w, r)
-			return
-		case r.Method == http.MethodGet && r.URL.Path == "/settings":
-			next.ServeHTTP(w, r)
-			return
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/static/"):
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		// Authenticate using the unified ExtractToken function
 		token := ExtractToken(r)
-		if token == "" {
-			http.Error(w, `{"error":"missing or invalid authorization header"}`, http.StatusUnauthorized)
-			return
-		}
 
-		userID, ok := ValidateToken(token, store)
-		if !ok {
-			http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
-			return
-		}
+		var userID string
+		var isAdmin bool
+		var authenticated bool
 
-		isAdmin, _ := store.IsUserAdmin(userID)
+		if token != "" {
+			userID, authenticated = ValidateToken(token, store)
+			if authenticated {
+				isAdmin, _ = store.IsUserAdmin(userID)
+			} else {
+				userID = ""
+			}
+		}
 
 		ctx := context.WithValue(r.Context(), userIDKey, userID)
 		ctx = context.WithValue(ctx, isAdminKey, isAdmin)
+		ctx = context.WithValue(ctx, authenticatedKey, authenticated)
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -124,6 +103,14 @@ func UserIDFromContext(r *http.Request) string {
 func IsAdminFromContext(r *http.Request) bool {
 	if isAdmin, ok := r.Context().Value(isAdminKey).(bool); ok {
 		return isAdmin
+	}
+	return false
+}
+
+// AuthenticatedFromContext extracts the authenticated status from the request context.
+func AuthenticatedFromContext(r *http.Request) bool {
+	if authenticated, ok := r.Context().Value(authenticatedKey).(bool); ok {
+		return authenticated
 	}
 	return false
 }

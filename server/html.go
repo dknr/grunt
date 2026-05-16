@@ -27,21 +27,38 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// GET / or GET /login - serve the appropriate page
-	token := ExtractToken(r)
-	
-	// Validate token if present
-	var isAdmin bool
-	if token != "" {
-		userID, ok := ValidateToken(token, DefaultStore)
-		if !ok {
-			token = "" // Treat invalid/expired token as no token
-		} else {
-			isAdmin, _ = DefaultStore.IsUserAdmin(userID)
+	// GET / or GET /login - serve the appropriate page based on auth context
+	if AuthenticatedFromContext(r) {
+		// Authenticated, serve chat UI with initial messages
+		messages, err := DefaultStore.Sync(0, 50) // Load last 50 messages
+		if err != nil {
+			http.Error(w, "Failed to load messages", http.StatusInternalServerError)
+			return
 		}
-	}
 
-	if token == "" {
+		// Render chat page with messages
+		content, err := templateFS.ReadFile("templates/chat.html")
+		if err != nil {
+			http.Error(w, "Template not found", http.StatusInternalServerError)
+			return
+		}
+
+		// Replace placeholders with message HTML and admin status
+		messageHTML := renderMessages(messages)
+		html := string(content)
+		html = strings.Replace(html, "{{.Messages}}", messageHTML, 1)
+		if IsAdminFromContext(r) {
+			html = strings.Replace(html, "{{.Admin}}", "true", 1)
+		} else {
+			html = strings.Replace(html, "{{.Admin}}", "false", 1)
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		w.Write([]byte(html))
+	} else {
 		// Not authenticated, serve login form
 		content, err := templateFS.ReadFile("templates/login.html")
 		if err != nil {
@@ -50,38 +67,7 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "text/html")
 		w.Write(content)
-		return
 	}
-
-	// Authenticated, serve chat UI with initial messages
-	messages, err := DefaultStore.Sync(0, 50) // Load last 50 messages
-	if err != nil {
-		http.Error(w, "Failed to load messages", http.StatusInternalServerError)
-		return
-	}
-
-	// Render chat page with messages
-	content, err := templateFS.ReadFile("templates/chat.html")
-	if err != nil {
-		http.Error(w, "Template not found", http.StatusInternalServerError)
-		return
-	}
-
-	// Replace placeholders with message HTML and admin status
-	messageHTML := renderMessages(messages)
-	html := string(content)
-	html = strings.Replace(html, "{{.Messages}}", messageHTML, 1)
-	if isAdmin {
-		html = strings.Replace(html, "{{.Admin}}", "true", 1)
-	} else {
-		html = strings.Replace(html, "{{.Admin}}", "false", 1)
-	}
-
-	w.Header().Set("Content-Type", "text/html")
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Set("Pragma", "no-cache")
-	w.Header().Set("Expires", "0")
-	w.Write([]byte(html))
 }
 
 // renderMessages converts a slice of broadcasts to HTML.
@@ -208,20 +194,10 @@ func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 // HandleSettings serves the settings page for authenticated users.
 // It displays user actions and admin-only actions based on the current user's role.
 func HandleSettings(w http.ResponseWriter, r *http.Request) {
-	token := ExtractToken(r)
-
-	if token == "" {
+	if !AuthenticatedFromContext(r) {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
-
-	userID, ok := ValidateToken(token, DefaultStore)
-	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-
-	isAdmin, _ := DefaultStore.IsUserAdmin(userID)
 
 	content, err := templateFS.ReadFile("templates/settings.html")
 	if err != nil {
@@ -230,7 +206,7 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	html := string(content)
-	if isAdmin {
+	if IsAdminFromContext(r) {
 		html = strings.Replace(html, "{{.Admin}}", "true", 1)
 	} else {
 		html = strings.Replace(html, "{{.Admin}}", "false", 1)
@@ -243,10 +219,7 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 // HandleIndex serves the main index page.
 // It checks for authentication and serves either the chat UI or redirects to login.
 func HandleIndex(w http.ResponseWriter, r *http.Request) {
-	// Check if user is authenticated
-	token := ExtractToken(r)
-	
-	if token == "" {
+	if !AuthenticatedFromContext(r) {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
@@ -264,7 +237,7 @@ func HandleIndex(w http.ResponseWriter, r *http.Request) {
 // HandleLogin serves the login page and handles login submissions.
 func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	// If already authenticated, redirect to chat
-	if ExtractToken(r) != "" {
+	if AuthenticatedFromContext(r) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
