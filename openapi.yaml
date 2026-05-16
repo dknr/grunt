@@ -106,6 +106,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/user/password:
+    post:
+      summary: Change user password
+      operationId: changePassword
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Bad request (missing fields)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized (wrong current password)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/chat/message:
     post:
       summary: Send a message
@@ -440,6 +478,21 @@ components:
           type: string
           description: Authentication token (valid for 24 hours)
           example: abc123def456
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+      properties:
+        current_password:
+          type: string
+          description: Current password for verification
+          example: oldpass123
+        new_password:
+          type: string
+          description: New password to set
+          example: newpass456
 
     SendMessageRequest:
       type: object

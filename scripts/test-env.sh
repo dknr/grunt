@@ -97,6 +97,27 @@ fi
 
 echo -e "${GREEN}Web UI user (admin): $WEB_USER / $WEB_PASS${NC}"
 
+# Test password change
+echo -e "${YELLOW}Testing password change...${NC}"
+NEW_WEB_PASS="newwebpass"
+PASSWORD_CHANGE_RESPONSE=$(curl -s -X POST "http://localhost:$PORT/api/user/password" \
+    -H "Authorization: Bearer $WEB_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"current_password\":\"$WEB_PASS\",\"new_password\":\"$NEW_WEB_PASS\"}")
+echo -e "${GREEN}Password change response: $PASSWORD_CHANGE_RESPONSE${NC}"
+
+# Login with new password to get updated token
+WEB_TOKEN=$(curl -s -X POST "http://localhost:$PORT/api/user/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"user\":\"$WEB_USER\",\"password\":\"$NEW_WEB_PASS\"}" | grep -oP '"token":"\K[^"]+')
+
+if [ -z "$WEB_TOKEN" ]; then
+    echo -e "${RED}ERROR: Could not login with new password${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Password change verified: $WEB_USER can now login with $NEW_WEB_PASS${NC}"
+
 # Generate invite code for new users via web UI
 echo -e "${YELLOW}Generating invite code for new user...${NC}"
 WEB_UI_INVITE_RESPONSE=$(curl -s -X GET "http://localhost:$PORT/api/user/invite" \

@@ -140,6 +140,31 @@ func (s *Store) VerifyUser(user, password string) (bool, error) {
 	return bcrypt.CompareHashAndPassword([]byte(*hash), []byte(password)) == nil, nil
 }
 
+func (s *Store) ChangePassword(userID, currentPassword, newPassword string) error {
+	// Verify current password first
+	ok, err := s.VerifyUser(userID, currentPassword)
+	if err != nil {
+		return fmt.Errorf("verify current password: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("current password is incorrect")
+	}
+
+	// Hash new password
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash new password: %w", err)
+	}
+
+	// Update password hash in database
+	_, err = s.db.Exec("UPDATE users SET password_hash = ? WHERE user = ?", string(hash), userID)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Store) Close() error {
 	return s.db.Close()
 }

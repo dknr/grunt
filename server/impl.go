@@ -156,6 +156,54 @@ func (a *apiImpl) LoginUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+// ChangePassword implements the password change endpoint.
+func (a *apiImpl) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req ChangePasswordRequest
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "json") {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"missing current_password or new_password field"}`, http.StatusBadRequest)
+			return
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+		req.CurrentPassword = r.FormValue("current_password")
+		req.NewPassword = r.FormValue("new_password")
+	}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		http.Error(w, `{"error":"current_password and new_password are required"}`, http.StatusBadRequest)
+		return
+	}
+
+	userID := UserIDFromContext(r)
+	if userID == "" {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	if err := a.store.ChangePassword(userID, req.CurrentPassword, req.NewPassword); err != nil {
+		// Check if it's an incorrect password error (401)
+		if strings.Contains(err.Error(), "incorrect") {
+			slog.Warn("Password change failed: wrong current password", "user", userID)
+			http.Error(w, `{"error":"current password is incorrect"}`, http.StatusUnauthorized)
+			return
+		}
+		slog.Error("Error changing password", "error", err)
+		http.Error(w, `{"error":"failed to change password"}`, http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("Password changed successfully", "user", userID)
+	w.WriteHeader(http.StatusOK)
+	msg := MessageResponse{
+		Message: strPtr("password changed"),
+	}
+	json.NewEncoder(w).Encode(msg)
+}
+
 // SyncMessages implements the sync endpoint.
 func (a *apiImpl) SyncMessages(w http.ResponseWriter, r *http.Request, params SyncMessagesParams) {
 	since := int64(0)
