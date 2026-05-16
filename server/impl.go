@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -83,6 +85,16 @@ func (a *apiImpl) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	if err := a.store.MarkInviteUsed(req.InviteCode, req.User); err != nil {
 		slog.Error("Error marking invite as used", "error", err)
 		// Don't fail registration if invite marking fails
+	}
+
+	// Set first user as admin
+	userCount, err := a.store.CreateUserCount()
+	if err == nil && userCount == 1 {
+		if err := a.store.SetUserAdmin(req.User); err != nil {
+			slog.Error("Failed to set first user as admin", "error", err)
+		} else {
+			slog.Info("First user registered, granted admin privileges", "user", req.User)
+		}
 	}
 
 	slog.Info("User registered", "user", req.User)
@@ -324,6 +336,10 @@ func int64Ptr(i int64) *int64 {
 
 // AdminCreateUser implements the admin create user endpoint.
 func (a *apiImpl) AdminCreateUser(w http.ResponseWriter, r *http.Request) {
+	if !IsAdminFromContext(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	var req AdminCreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -351,6 +367,10 @@ func (a *apiImpl) AdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 // AdminListAPIKeys implements the admin list API keys endpoint.
 func (a *apiImpl) AdminListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	if !IsAdminFromContext(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	keys, err := a.store.ListAllAPIKeys()
 	if err != nil {
 		slog.Error("Error listing API keys", "error", err)
@@ -364,12 +384,26 @@ func (a *apiImpl) AdminListAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 // AdminCreateAPIKey implements the admin create API key endpoint.
 func (a *apiImpl) AdminCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	if !IsAdminFromContext(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	var req AdminCreateAPIKeyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if isHTMXRequest(r) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Invalid request body.</p>`))
+			return
+		}
 		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 		return
 	}
 	if req.UserId == "" {
+		if isHTMXRequest(r) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">User ID is required.</p>`))
+			return
+		}
 		http.Error(w, `{"error":"user_id is required"}`, http.StatusBadRequest)
 		return
 	}
@@ -380,6 +414,11 @@ func (a *apiImpl) AdminCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	rawKey, err := generateAPIKey()
 	if err != nil {
 		slog.Error("Error generating API key", "error", err)
+		if isHTMXRequest(r) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Failed to generate API key.</p>`))
+			return
+		}
 		http.Error(w, `{"error":"failed to generate API key"}`, http.StatusInternalServerError)
 		return
 	}
@@ -389,15 +428,30 @@ func (a *apiImpl) AdminCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if req.Name != nil {
 		nameStr = *req.Name
 	}
-	if err := a.store.CreateAPIKey(req.UserId, adminID, keyHash, nameStr); err != nil {
+	keyID, err := a.store.CreateAPIKey(req.UserId, adminID, keyHash, nameStr)
+	if err != nil {
 		slog.Error("Error creating API key", "error", err)
+		if isHTMXRequest(r) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Failed to create API key.</p>`))
+			return
+		}
 		http.Error(w, `{"error":"failed to create API key"}`, http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("Admin created API key", "user_id", req.UserId, "admin", adminID, "name", req.Name)
+	slog.Info("Admin created API key", "user_id", req.UserId, "admin", adminID, "name", nameStr)
+
+	if isHTMXRequest(r) {
+		w.Header().Set("Content-Type", "text/html")
+		resultHTML := fmt.Sprintf(`<div class="success"><strong>New API Key (shown once):</strong><br>%s<br><small>ID: %d, Name: %s</small></div>`,
+			html.EscapeString(rawKey), keyID, html.EscapeString(nameStr))
+		w.Write([]byte(resultHTML))
+		return
+	}
+
 	resp := APIKeyResponse{
-		KeyId:  int64Ptr(0), // TODO: return actual key ID if needed
+		KeyId:  int64Ptr(keyID),
 		Secret: strPtr(rawKey),
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -406,19 +460,83 @@ func (a *apiImpl) AdminCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 // AdminRevokeAPIKey implements the admin revoke API key endpoint.
 func (a *apiImpl) AdminRevokeAPIKey(w http.ResponseWriter, r *http.Request, keyId int64) {
+	if !IsAdminFromContext(r) {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	adminID := UserIDFromContext(r)
 	if err := a.store.RevokeAPIKey(keyId); err != nil {
 		slog.Error("Error revoking API key", "key_id", keyId, "admin", adminID, "error", err)
+		if isHTMXRequest(r) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Failed to revoke API key.</p>`))
+			return
+		}
 		http.Error(w, `{"error":"failed to revoke API key"}`, http.StatusInternalServerError)
 		return
 	}
 
 	slog.Info("Admin revoked API key", "key_id", keyId, "admin", adminID)
+
+	if isHTMXRequest(r) {
+		userID := r.URL.Query().Get("user_id")
+		if userID != "" {
+			keys, err := a.store.ListAPIKeys(userID)
+			if err != nil {
+				w.Header().Set("Content-Type", "text/html")
+				w.Write([]byte(`<p class="error">Failed to reload keys.</p>`))
+				return
+			}
+			renderKeyTableHTML(w, keys)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<p class="success">Key revoked.</p>`))
+		return
+	}
+
 	msg := MessageResponse{
 		Message: strPtr("API key revoked"),
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(msg)
+}
+
+// isHTMXRequest checks if the request is from HTMX.
+func isHTMXRequest(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
+}
+
+// renderKeyTableHTML renders an HTML table of API keys for a given user.
+func renderKeyTableHTML(w http.ResponseWriter, keys []storage.APIKeyInfo) {
+	if len(keys) == 0 {
+		w.Write([]byte(`<p style="color: #888; margin-top: 0.5rem;">No API keys for this user.</p>`))
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString(`<table><thead><tr><th>ID</th><th>Name</th><th>Created</th><th></th></tr></thead><tbody>`)
+	for _, k := range keys {
+		ts := "unknown"
+		if !k.CreatedAt.IsZero() {
+			ts = k.CreatedAt.Format("2006-01-02 15:04")
+		}
+		nameStr := ""
+		if k.Name != nil {
+			nameStr = html.EscapeString(*k.Name)
+		} else {
+			nameStr = "—"
+		}
+		sb.WriteString(`<tr>`)
+		sb.WriteString(fmt.Sprintf(`<td>%d</td>`, k.ID))
+		sb.WriteString(fmt.Sprintf(`<td>%s</td>`, nameStr))
+		sb.WriteString(fmt.Sprintf(`<td>%s</td>`, ts))
+		sb.WriteString(fmt.Sprintf(`<td><button type="button" hx-delete="/api/admin/api-keys/%d" hx-target="#api-keys-table-container" hx-swap="innerHTML" onclick="if(!confirm('Revoke this key?'))event.preventDefault()">Revoke</button></td>`, k.ID))
+		sb.WriteString(`</tr>`)
+	}
+	sb.WriteString(`</tbody></table>`)
+
+	w.Write([]byte(sb.String()))
 }
 
 // generateAPIKey generates a new API key with the gk_ prefix.

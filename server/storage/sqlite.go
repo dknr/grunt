@@ -266,12 +266,15 @@ func (s *Store) Sync(since int, limit int) ([]client.Broadcast, error) {
 
 // API Key functions
 
-func (s *Store) CreateAPIKey(userID, adminUserID, keyHash, name string) error {
-	_, err := s.db.Exec(
+func (s *Store) CreateAPIKey(userID, adminUserID, keyHash, name string) (int64, error) {
+	result, err := s.db.Exec(
 		"INSERT INTO api_keys (user_id, admin_user_id, key_hash, name) VALUES (?, ?, ?, ?)",
 		userID, adminUserID, keyHash, name,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
 }
 
 func (s *Store) GetAPIKeyByHash(keyHash string) (string, error) {
