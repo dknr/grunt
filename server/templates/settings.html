@@ -4,47 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grunt Settings</title>
+    <link rel="stylesheet" href="/static/style.css">
     <script src="/static/htmx.min.js"></script>
-    <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
-        h1 { margin-bottom: 1.5rem; }
-        nav a { color: #0066cc; text-decoration: none; }
-        nav a:hover { text-decoration: underline; }
-        .section { margin-bottom: 2rem; padding: 1rem; border: 1px solid #eee; border-radius: 4px; }
-        .section h2 { margin-top: 0; font-size: 1.2em; }
-        form { display: flex; flex-direction: column; gap: 0.5rem; }
-        input { padding: 0.5rem; }
-        button { padding: 0.5rem 1rem; cursor: pointer; }
-        #password-result, #invite-result { margin-top: 0.5rem; font-weight: bold; word-break: break-all; }
-        .success { color: green; }
-        .error { color: red; }
-    </style>
 </head>
 <body>
-    <h1>Settings <nav><a href="/">Back to Chat</a></nav></h1>
+    <header class="chat-header">
+        <div class="header-inner">
+            <div class="brand-icon"></div>
+            <h1>Settings</h1>
+            <a href="/" class="profile-icon"></a>
+        </div>
+    </header>
 
-    <!-- User Actions Section -->
-    <div class="section">
-        <h2>User Actions</h2>
-        <form hx-post="/api/user/password"
-              hx-target="#password-result"
-              hx-swap="innerHTML"
-              hx-on::before-request="if (this.querySelector('[name=new_password]').value !== this.querySelector('[name=confirm_password]').value) { event.preventDefault(); alert('New passwords do not match'); }">
-            <input name="current_password" type="password" placeholder="Current password" required>
-            <input name="new_password" type="password" placeholder="New password" required>
-            <input name="confirm_password" type="password" placeholder="Confirm new password" required>
-            <button type="submit">Change Password</button>
-        </form>
-        <div id="password-result"></div>
-    </div>
+    <main style="flex: 1; overflow-y: auto; display: flex; align-items: center; gap: 8px; padding-top: 8px; padding-bottom: 8px; flex-direction: column;">
+        <!-- User Actions Section -->
+        <div class="section">
+            <h2>Change Password</h2>
+            <form hx-post="/api/user/password"
+                  hx-target="#password-result"
+                  hx-swap="innerHTML"
+                  hx-on::before-request="if (this.querySelector('[name=new_password]').value !== this.querySelector('[name=confirm_password]').value) { event.preventDefault(); alert('New passwords do not match'); }">
+                <input name="current_password" type="password" placeholder="Current password" required>
+                <input name="new_password" type="password" placeholder="New password" required>
+                <input name="confirm_password" type="password" placeholder="Confirm new password" required>
+                <button type="submit">Change Password</button>
+            </form>
+            <div id="password-result"></div>
+        </div>
 
-    <!-- Admin Actions Section (visible only to admins) -->
-    <div id="admin-panel" class="section hidden">
-        <h2>Admin Actions</h2>
-        <p>Generate a new invite code for registration:</p>
-        <button type="button" onclick="generateInvite()">Generate Invite Code</button>
-        <div id="invite-result"></div>
-    </div>
+        <!-- Admin Actions Section (visible only to admins) -->
+        <div id="admin-panel" class="section hidden">
+            <h2>Admin Actions</h2>
+            <p>Generate a new invite code for registration:</p>
+            <button type="button" onclick="generateInvite()">Generate Invite Code</button>
+            <div id="invite-result"></div>
+        </div>
+    </main>
 
     <script>
         var isAdmin = {{.Admin}};

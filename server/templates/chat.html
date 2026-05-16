@@ -4,37 +4,53 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grunt Chat</title>
+    <link rel="stylesheet" href="/static/style.css">
     <script src="/static/htmx.min.js"></script>
-    <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
-        h1 { display: flex; justify-content: space-between; align-items: center; }
-        nav a { color: #0066cc; text-decoration: none; font-size: 0.9em; }
-        nav a:hover { text-decoration: underline; }
-        #messages { margin-bottom: 1rem; }
-        .message { padding: 0.5rem; border-bottom: 1px solid #eee; }
-        .message strong { color: #333; }
-        .message .timestamp { color: #999; font-size: 0.8em; margin-left: 0.5rem; }
-        .event { color: #666; font-size: 0.9em; margin: 0.5rem 0; }
-        form { display: flex; gap: 0.5rem; }
-        form input { flex: 1; padding: 0.5rem; }
-        form button { padding: 0.5rem 1rem; }
-    </style>
 </head>
 <body>
-    <h1>Chat <nav><a href="/settings">Settings</a></nav></h1>
-    <div id="messages">{{.Messages}}</div>
-    <div id="events"></div>
-    <form hx-post="/api/chat/message"
-          hx-swap="none"
-          hx-headers='{"Content-Type": "application/json"}'
-          hx-on::before-request="event.detail.request.body = JSON.stringify({content: event.detail.request.target.querySelector('[name=content]').value})"
-          hx-on::after-request="this.reset()">
-        <input name="content" placeholder="Type a message..." required>
-        <button type="submit">Send</button>
-    </form>
+    <header class="chat-header">
+        <div class="header-inner">
+            <div class="brand-icon"></div>
+            <h1>Grunt</h1>
+            <a href="/settings" class="profile-icon"></a>
+        </div>
+    </header>
+    <main id="messages">{{.Messages}}</main>
+    <footer class="chat-footer">
+        <form hx-post="/api/chat/message"
+              hx-swap="none"
+              hx-headers='{"Content-Type": "application/json"}'
+              hx-on::before-request="event.detail.request.body = JSON.stringify({content: event.detail.request.target.querySelector('[name=content]').value})"
+              hx-on::after-request="this.reset(); this.querySelector('[name=content]').style.height='auto'">
+            <textarea name="content" placeholder="Type a message..." required rows="1" autocomplete="off"></textarea>
+            <div class="send-wrapper">
+                <button type="submit" class="send-button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+        </form>
+    </footer>
 
     <script>
         var isAdmin = {{.Admin}};
+
+        // Auto-expand textarea as user types
+        var textarea = document.querySelector('[name="content"]');
+        var form = textarea.closest('form');
+
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                form.requestSubmit();
+            }
+        });
 
         // Connect to SSE stream using native EventSource
         var source = new EventSource('/api/chat/stream');
@@ -48,19 +64,7 @@
                     '<span class="timestamp">' + new Date(data.timestamp).toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'}) + '</span>' +
                     '<p>' + data.content + '</p>';
                 document.getElementById('messages').appendChild(div);
-            } else if (data.type === 'event') {
-                var div = document.createElement('div');
-                div.className = 'event';
-                div.textContent = data.user + ' ' + data.event;
-                document.getElementById('events').appendChild(div);
             }
-        });
-        source.addEventListener('event', function(e) {
-            var data = JSON.parse(e.data);
-            var div = document.createElement('div');
-            div.className = 'event';
-            div.textContent = data.user + ' ' + data.event;
-            document.getElementById('events').appendChild(div);
         });
     </script>
 </body>
