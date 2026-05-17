@@ -2,9 +2,11 @@ package server
 
 import (
 	"fmt"
+	"hash/fnv"
 	"html"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"embed"
@@ -43,7 +45,7 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Replace placeholders with message HTML and admin status
+		// Replace placeholders with message HTML, admin status, and profile avatar
 		messageHTML := renderMessages(messages)
 		html := string(content)
 		html = strings.Replace(html, "{{.Messages}}", messageHTML, 1)
@@ -51,6 +53,13 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 			html = strings.Replace(html, "{{.Admin}}", "true", 1)
 		} else {
 			html = strings.Replace(html, "{{.Admin}}", "false", 1)
+		}
+
+		// Replace profile icon with hash-based avatar
+		userID := UserIDFromContext(r)
+		if userID != "" {
+			html = strings.Replace(html, `<a href="/settings" class="profile-icon"></a>`,
+				`<a href="/settings"><div class="avatar">`+generateAvatarSVG(userID)+`</div></a>`, 1)
 		}
 
 		w.Header().Set("Content-Type", "text/html")
@@ -70,17 +79,54 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// avatarColor returns a deterministic HSL color string from the given userID.
+func avatarColor(userID string) string {
+	h := fnv.New32a()
+	h.Write([]byte(userID))
+	hash := h.Sum32()
+
+	hue := float64(hash % 360)
+	saturation := 70.0 + float64(hash%25)
+	lightness := 35.0 + float64((hash>>8)%31)
+
+	return "hsl(" + strconv.FormatFloat(hue, 'f', -1, 32) + "," + strconv.FormatFloat(saturation, 'f', -1, 32) + "%," + strconv.FormatFloat(lightness, 'f', -1, 32) + "%)"
+}
+
+// avatarTextColor returns "#fff" or "#000" based on HSL lightness for optimal contrast.
+func avatarTextColor(userID string) string {
+	h := fnv.New32a()
+	h.Write([]byte(userID))
+	hash := h.Sum32()
+	lightness := 35.0 + float64((hash>>8)%31)
+
+	if lightness > 50 {
+		return "#000"
+	}
+	return "#fff"
+}
+
+// generateAvatarSVG produces a deterministic avatar SVG from the given userID.
+func generateAvatarSVG(userID string) string {
+	initial := "?"
+	if len(userID) > 0 {
+		runeSlice := []rune(userID)
+		initial = strings.ToUpper(string(runeSlice[0]))
+	}
+
+	return `<svg width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="` + avatarColor(userID) + `" /><text x="16" y="16" text-anchor="middle" dominant-baseline="central" fill="` + avatarTextColor(userID) + `" font-size="18" font-weight="bold" font-family="system-ui, sans-serif">` + html.EscapeString(initial) + `</text></svg>`
+}
+
 // renderMessages converts a slice of broadcasts to HTML.
 func renderMessages(msgs []client.Broadcast) string {
 	var sb strings.Builder
 	for _, m := range msgs {
 		sb.WriteString(`<div class="message-row">`)
 		sb.WriteString(`<div class="avatar-col">`)
-		sb.WriteString(`<div class="avatar"><svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></div>`)
+		sb.WriteString(`<div class="avatar">` + generateAvatarSVG(m.UserID) + `</div>`)
 		sb.WriteString(`<span class="timestamp">` + m.Timestamp.Format("15:04") + `</span>`)
 		sb.WriteString(`</div>`)
 		sb.WriteString(`<div class="message-bubble" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
-		sb.WriteString(`<strong class="username">` + html.EscapeString(m.UserID) + `</strong>`)
+		sb.WriteString(`<strong class="username" style="color: ` + avatarColor(m.UserID) + `">` + html.EscapeString(m.UserID) + `</strong>`)
 		sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
 		sb.WriteString(`</div></div>`)
 	}
@@ -92,11 +138,11 @@ func renderMessageHTML(m client.Broadcast) string {
 	var sb strings.Builder
 	sb.WriteString(`<div class="message-row">`)
 	sb.WriteString(`<div class="avatar-col">`)
-	sb.WriteString(`<div class="avatar"><svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></div>`)
+	sb.WriteString(`<div class="avatar">` + generateAvatarSVG(m.UserID) + `</div>`)
 	sb.WriteString(`<span class="timestamp">` + m.Timestamp.Format("15:04") + `</span>`)
 	sb.WriteString(`</div>`)
 	sb.WriteString(`<div class="message-bubble" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
-	sb.WriteString(`<strong class="username">` + html.EscapeString(m.UserID) + `</strong>`)
+	sb.WriteString(`<strong class="username" style="color: ` + avatarColor(m.UserID) + `">` + html.EscapeString(m.UserID) + `</strong>`)
 	sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
 	sb.WriteString(`</div></div>`)
 	return sb.String()
@@ -211,7 +257,6 @@ func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleSettings serves the settings page for authenticated users.
-// It displays user actions and admin-only actions based on the current user's role.
 func HandleSettings(w http.ResponseWriter, r *http.Request) {
 	if !AuthenticatedFromContext(r) {
 		http.Redirect(w, r, "/login", http.StatusFound)
@@ -229,6 +274,13 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 		html = strings.Replace(html, "{{.Admin}}", "true", 1)
 	} else {
 		html = strings.Replace(html, "{{.Admin}}", "false", 1)
+	}
+
+	// Replace profile icon with hash-based avatar linking back to chat
+	userID := UserIDFromContext(r)
+	if userID != "" {
+		html = strings.Replace(html, `<a href="/" class="profile-icon"></a>`,
+			`<a href="/"><div class="avatar">`+generateAvatarSVG(userID)+`</div></a>`, 1)
 	}
 
 	w.Header().Set("Content-Type", "text/html")

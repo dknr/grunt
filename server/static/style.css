@@ -82,11 +82,14 @@ body {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background-color: var(--bg-tertiary);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;
+    display: block;
     transition: all 0.2s ease;
+}
+
+.profile-icon .avatar {
+    width: 32px;
+    height: 32px;
 }
 
 .profile-icon:hover {
@@ -311,16 +314,11 @@ button:active {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background-color: var(--bg-tertiary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    overflow: hidden;
 }
 
-.message-row .avatar svg {
-    width: 16px;
-    height: 16px;
-    fill: var(--text-muted);
+.avatar svg {
+    display: block;
 }
 
 .message-row .timestamp {
@@ -344,7 +342,6 @@ button:active {
 }
 
 .message-row .username {
-    color: var(--accent);
     font-weight: 600;
     font-size: 14px;
 }
