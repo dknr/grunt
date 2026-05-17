@@ -303,49 +303,6 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
-// HandleIndex serves the main index page.
-// It checks for authentication and serves either the chat UI or redirects to login.
-func HandleIndex(w http.ResponseWriter, r *http.Request) {
-	if !AuthenticatedFromContext(r) {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-
-	content, err := templateFS.ReadFile("templates/chat.html")
-	if err != nil {
-		http.Error(w, "Template not found", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html")
-	w.Write(content)
-}
-
-// HandleLogin serves the login page and handles login submissions.
-func HandleLogin(w http.ResponseWriter, r *http.Request) {
-	// If already authenticated, redirect to chat
-	if AuthenticatedFromContext(r) {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-
-	if r.Method == http.MethodGet {
-		content, err := templateFS.ReadFile("templates/login.html")
-		if err != nil {
-			http.Error(w, "Template not found", http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html")
-		w.Write(content)
-		return
-	}
-
-	if r.Method == http.MethodPost {
-		handleLoginSubmit(w, r)
-		return
-	}
-}
-
 // handleLogoutSubmit processes logout requests.
 func handleLogoutSubmit(w http.ResponseWriter, r *http.Request) {
 	// Clear the token cookie
