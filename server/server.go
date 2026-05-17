@@ -91,6 +91,9 @@ func (s *Server) setupRoutes() {
 	// Serve settings page
 	s.mux.HandleFunc("/settings", HandleSettings)
 
+	// Serve logout
+	s.mux.HandleFunc("/logout", handleLogoutSubmit)
+
 	// Serve static files
 	s.mux.HandleFunc("/static/", HandleStatic)
 }

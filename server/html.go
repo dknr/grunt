@@ -330,6 +330,21 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleLogoutSubmit processes logout requests.
+func handleLogoutSubmit(w http.ResponseWriter, r *http.Request) {
+	// Clear the token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+	})
+
+	// Redirect to login page
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
 // HandleStatic serves static files from the embedded static directory.
 func HandleStatic(w http.ResponseWriter, r *http.Request) {
 	// Extract the file path from the URL (remove "/static/" prefix)
