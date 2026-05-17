@@ -280,6 +280,7 @@ button:active {
 
 .login-form form {
     gap: 12px;
+    margin-bottom: 16px;
 }
 
 .login-form input {

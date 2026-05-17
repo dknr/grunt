@@ -21,7 +21,7 @@
         <form hx-post="/api/chat/message"
               hx-swap="none"
               hx-on::after-request="this.reset(); this.querySelector('[name=content]').style.height='auto'">
-            <textarea name="content" placeholder="Type a message..." required rows="1" autocomplete="off"></textarea>
+            <textarea name="content" placeholder="Type a message..." required rows="1" autocomplete="off" autofocus></textarea>
             <div class="send-wrapper">
                 <button type="submit" class="send-button">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">

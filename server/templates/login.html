@@ -17,7 +17,7 @@
     <div class="login-form">
         <!-- Login form -->
         <form method="post" action="/login" id="login-form">
-            <input type="text" name="user" placeholder="Username" required>
+            <input type="text" name="user" placeholder="Username" required autofocus>
             <input name="password" type="password" placeholder="Password" required>
             <button type="submit">Login</button>
         </form>
@@ -49,6 +49,7 @@
                 loginForm.classList.add('hidden');
                 registerForm.classList.remove('hidden');
                 toggleLink.textContent = "Already have an account? Login";
+                registerForm.querySelector('input[name="user"]').focus();
             } else {
                 loginForm.classList.remove('hidden');
                 registerForm.classList.add('hidden');
