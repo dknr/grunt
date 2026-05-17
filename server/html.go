@@ -74,11 +74,15 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 func renderMessages(msgs []client.Broadcast) string {
 	var sb strings.Builder
 	for _, m := range msgs {
-		sb.WriteString(`<div class="message" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
-		sb.WriteString(`<strong>` + html.EscapeString(m.UserID) + `</strong>`)
+		sb.WriteString(`<div class="message-row">`)
+		sb.WriteString(`<div class="avatar-col">`)
+		sb.WriteString(`<div class="avatar"><svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></div>`)
 		sb.WriteString(`<span class="timestamp">` + m.Timestamp.Format("15:04") + `</span>`)
-		sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
 		sb.WriteString(`</div>`)
+		sb.WriteString(`<div class="message-bubble" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
+		sb.WriteString(`<strong class="username">` + html.EscapeString(m.UserID) + `</strong>`)
+		sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
+		sb.WriteString(`</div></div>`)
 	}
 	return sb.String()
 }
@@ -86,11 +90,15 @@ func renderMessages(msgs []client.Broadcast) string {
 // renderMessageHTML converts a single broadcast message to an HTML fragment.
 func renderMessageHTML(m client.Broadcast) string {
 	var sb strings.Builder
-	sb.WriteString(`<div class="message" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
-	sb.WriteString(`<strong>` + html.EscapeString(m.UserID) + `</strong>`)
+	sb.WriteString(`<div class="message-row">`)
+	sb.WriteString(`<div class="avatar-col">`)
+	sb.WriteString(`<div class="avatar"><svg viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg></div>`)
 	sb.WriteString(`<span class="timestamp">` + m.Timestamp.Format("15:04") + `</span>`)
-	sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
 	sb.WriteString(`</div>`)
+	sb.WriteString(`<div class="message-bubble" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
+	sb.WriteString(`<strong class="username">` + html.EscapeString(m.UserID) + `</strong>`)
+	sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
+	sb.WriteString(`</div></div>`)
 	return sb.String()
 }
 
