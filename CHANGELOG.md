@@ -1,28 +1,32 @@
 # Changelog
 
-## v0.4.1 — Bug Fixes & Deno Client
-- **Fix:** Corrected igor system prompts — bots now recognize actual usernames instead of confusing the placeholder `user` for a real username
-- **Fix:** SSE `data:` line parsing now correctly strips the space after the colon per the SSE specification
-- **Feature:** Added Deno send client (`deno-client/send.ts`) with feature parity to `grunt send`
-- Integrated Deno client into test orchestration with dedicated tmux window
+## v0.5.2 — Web UI Redesign & Mobile Support
 
-## v0.4.0 — SSE Migration
-- Migrated from WebSocket to SSE for pub/sub messaging
-- Added `POST /api/chat/message` endpoint for REST-based sends
-- Merged `recv` and `repl` into split-pane clients window
+### Architecture
+- Migrated to server-side rendering with `html/template` + HTMX (replacing client-side JS)
+- Unified auth middleware across all endpoints
+- Consolidated login/register into single handler
 
-## v0.3.0 — Test Harness & Invite System
-- Added automated test environment orchestrator (`scripts/test-env.sh`)
-- Added invite code system with 10-minute expiration
-- Fixed data race in integration tests
+### Features
+- Password change in settings page
+- Logout button on settings page
+- First-user admin grant on registration
+- Build version footer (version, commit, timestamp) on login/settings pages
+- Admin panel with invite code generation via HTMX
 
-## v0.2.0 — API Organization & Auth
-- Added OpenAPI codegen for server types
-- Added auth middleware for protected endpoints
-- Organized API endpoints under `/api/` prefix
-- Reorganized server and storage packages
-- Updated client library to match new API structure
+### UI
+- Complete dark theme redesign
+- Hash-based avatars for users
+- Grouped message layout with username bubbles and timestamps
+- Settings page with password change, logout, admin actions
 
-## v0.1.0 — Initial Release
-- Restructured client library into `client/` package
-- Added embedded web UI (`chat.html`) with auth and chat views *(later removed in v0.2.0 refactoring)*
+### Mobile
+- `interactive-widget=resizes-content` viewport meta tag for Chrome Android keyboard handling
+- Dynamic viewport units (`dvw`/`dvh`) for proper layout during keyboard transitions
+- Safe area padding for notched devices
+- Fixed send button sizing (40x40px circle)
+- Input clearing after send without losing focus
+
+### Known Issues
+- Version footer shows `Grunt ()` on invalid login/register (error handlers don't pass version data — cosmetic, to be fixed in v0.5.3)
+- Keyboard closes after form submit (Enter key on virtual keyboard still works — deferred for later iteration)
