@@ -38,38 +38,14 @@
         </div>
 
         <!-- Admin Actions Section -->
-        <div id="admin-panel" class="section hidden">
+        {{if .IsAdmin}}
+        <div id="admin-panel" class="section">
             <h2>Admin Actions</h2>
             <p>Generate a new invite code for registration:</p>
-            <button type="button" onclick="generateInvite()">Generate Invite Code</button>
+            <button type="button" hx-get="/api/user/invite" hx-target="#invite-result" hx-swap="innerHTML">Generate Invite Code</button>
             <div id="invite-result"></div>
         </div>
+        {{end}}
     </main>
-
-    <script>
-        // Admin panel visibility determined by API response
-        fetch('/api/user/me', { credentials: 'include' })
-            .then(r => r.json())
-            .then(data => {
-                if (data.admin) {
-                    document.getElementById('admin-panel').classList.remove('hidden');
-                }
-            });
-
-        // Generate invite code via API
-        function generateInvite() {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', '/api/user/invite', true);
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    var resp = JSON.parse(xhr.responseText);
-                    document.getElementById('invite-result').textContent = 'New invite code: ' + resp.code;
-                } else {
-                    document.getElementById('invite-result').textContent = 'Failed to generate invite code.';
-                }
-            };
-            xhr.send();
-        }
-    </script>
 </body>
 </html>

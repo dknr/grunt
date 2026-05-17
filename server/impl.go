@@ -116,11 +116,25 @@ func (a *apiImpl) GetInvite(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.store.CreateInvite(code, expiresAt, userID); err != nil {
 		slog.Error("Error creating invite", "error", err)
+		if isHTMXRequest(r) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Failed to create invite code.</p>`))
+			return
+		}
 		http.Error(w, `{"error":"failed to create invite code"}`, http.StatusInternalServerError)
 		return
 	}
 
 	slog.Info("Invite code generated", "user", userID)
+
+	if isHTMXRequest(r) {
+		w.Header().Set("Content-Type", "text/html")
+		resultHTML := fmt.Sprintf(`<p class="success">New invite code: <strong>%s</strong> — expires %s</p>`,
+			html.EscapeString(code), html.EscapeString(expiresAt.Format("2006-01-02 15:04")))
+		w.Write([]byte(resultHTML))
+		return
+	}
+
 	resp := InviteResponse{
 		Code:      strPtr(code),
 		ExpiresAt: &expiresAt,

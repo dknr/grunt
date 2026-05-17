@@ -333,6 +333,7 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := UserIDFromContext(r)
+	isAdmin := IsAdminFromContext(r)
 	profile := AvatarData{
 		UserID:    userID,
 		URL:       "/",
@@ -342,7 +343,10 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	settingsTmpl.Execute(w, map[string]AvatarData{"Profile": profile})
+	settingsTmpl.Execute(w, map[string]interface{}{
+		"Profile": profile,
+		"IsAdmin": isAdmin,
+	})
 }
 
 // handleLogoutSubmit processes logout requests.
