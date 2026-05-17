@@ -16,7 +16,10 @@
             {{template "avatar" .Profile}}
         </div>
     </header>
-    <main id="messages">{{range .Messages}}{{template "message" .}}{{end}}</main>
+    <main id="messages">
+        <div id="msg-list">{{range .Messages}}{{template "message" .}}{{end}}</div>
+        <div id="scroll-anchor"></div>
+    </main>
     <footer class="chat-footer">
         <form hx-post="/api/chat/message"
               hx-swap="none"
@@ -36,7 +39,7 @@
     <div hx-ext="sse" 
          sse-connect="/api/chat/stream?format=html" 
          sse-swap="message"
-         hx-target="#messages"
+         hx-target="#msg-list"
          hx-swap="beforeend"
          id="sse-listener"
          style="display:none">

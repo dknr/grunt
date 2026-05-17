@@ -295,6 +295,16 @@ button:active {
     flex-direction: column;
 }
 
+#messages * {
+    overflow-anchor: none;
+}
+
+#scroll-anchor {
+    overflow-anchor: auto;
+    height: 1px;
+    flex-shrink: 0;
+}
+
 .message-row {
     display: flex;
     align-items: flex-start;
