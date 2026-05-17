@@ -1,0 +1,6 @@
+{{define "version"}}
+<footer class="version-footer">
+    <span>Grunt {{.Version}} ({{.Commit}})</span>
+    {{if .Timestamp}}<br><span>{{.Timestamp}}</span>{{end}}
+</footer>
+{{end}}

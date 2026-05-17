@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
     <title>Grunt Chat</title>
     <link rel="stylesheet" href="/static/style.css">
     <script src="/static/htmx.js"></script>
@@ -23,15 +23,13 @@
     <footer class="chat-footer">
         <form hx-post="/api/chat/message"
               hx-swap="none"
-              hx-on::after-request="this.reset(); this.querySelector('[name=content]').style.height='auto'">
+              hx-on::after-request="this.querySelector('[name=content]').value = ''; this.querySelector('[name=content]').style.height='auto'">
             <textarea name="content" placeholder="Type a message..." required rows="1" autocomplete="off" autofocus></textarea>
-            <div class="send-wrapper">
-                <button type="submit" class="send-button">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
-                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                    </svg>
-                </button>
-            </div>
+            <button type="submit" class="send-button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                </svg>
+            </button>
         </form>
     </footer>
 
@@ -55,6 +53,7 @@
             this.style.height = Math.min(this.scrollHeight, 120) + 'px';
         });
 
+        // Enter key sends message (Shift+Enter for newline)
         textarea.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
