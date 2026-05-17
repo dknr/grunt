@@ -4,9 +4,9 @@ DIRTY    ?= $(shell git diff --quiet HEAD 2>/dev/null || echo "+dirty")
 TIMESTAMP?= $(shell date -u +"%Y-%m-%dT%H:%M:%S")
 
 LDFLAGS := -s -w \
-	-X grunt/cmd.version=$(VERSION)$(DIRTY) \
-	-X grunt/cmd.timestamp=$(TIMESTAMP) \
-	-X grunt/cmd.commit=$(COMMIT)
+	-X grunt.Version=$(VERSION)$(DIRTY) \
+	-X grunt.Timestamp=$(TIMESTAMP) \
+	-X grunt.Commit=$(COMMIT)
 
 BINARY_NAME ?= grunt
 BUILD_DIR   ?= dist

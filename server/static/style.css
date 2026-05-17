@@ -472,3 +472,16 @@ a:hover {
     color: var(--accent-hover);
     text-decoration: underline;
 }
+/* === Version Footer === */
+.version-footer {
+    margin-top: auto;
+    text-align: center;
+    padding: 8px 24px;
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.version-footer span {
+    margin: 0 4px;
+}

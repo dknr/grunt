@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"grunt"
 	"grunt/client"
 )
 
@@ -54,7 +55,7 @@ func init() {
 	var err error
 
 	// Login template is standalone
-	loginTmpl, err = template.ParseFS(templateFS, "templates/login.html")
+	loginTmpl, err = template.ParseFS(templateFS, "templates/login.html", "templates/partials/version.html")
 	if err != nil {
 		slog.Error("Failed to parse login template", "error", err)
 		os.Exit(1)
@@ -66,6 +67,7 @@ func init() {
 		"templates/partials/message.html",
 		"templates/chat.html",
 		"templates/settings.html",
+		"templates/partials/version.html",
 	}
 	combined, err := template.ParseFS(templateFS, allTemplates...)
 	if err != nil {
@@ -78,7 +80,7 @@ func init() {
 	messageTmpl = combined.Lookup("message.html")
 }
 
-//go:embed templates/login.html templates/chat.html templates/settings.html templates/partials/avatar.html templates/partials/message.html
+//go:embed templates/login.html templates/chat.html templates/settings.html templates/partials/avatar.html templates/partials/message.html templates/partials/version.html
 var templateFS embed.FS
 
 //go:embed static
@@ -152,7 +154,9 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Not authenticated, serve login form
 		w.Header().Set("Content-Type", "text/html")
-		loginTmpl.Execute(w, nil)
+		loginTmpl.Execute(w, map[string]interface{}{"Version":    grunt.Version,
+		"Timestamp":  grunt.Timestamp,
+		"Commit":     grunt.Commit})
 	}
 }
 
@@ -344,8 +348,11 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html")
 	settingsTmpl.Execute(w, map[string]interface{}{
-		"Profile": profile,
-		"IsAdmin": isAdmin,
+		"Profile":    profile,
+		"IsAdmin":    isAdmin,
+		"Version":    grunt.Version,
+		"Timestamp":  grunt.Timestamp,
+		"Commit":     grunt.Commit,
 	})
 }
 
