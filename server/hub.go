@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"html"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -55,14 +56,15 @@ type Hub struct {
 }
 
 type Subscriber struct {
-	hub      *Hub
-	send     chan []byte
-	clientID string
-	userID   string
-	done     chan struct{}
-	writer   http.ResponseWriter
-	flusher  http.Flusher
-	ctx      context.Context
+	hub        *Hub
+	send       chan []byte
+	clientID   string
+	userID     string
+	done       chan struct{}
+	writer     http.ResponseWriter
+	flusher    http.Flusher
+	ctx        context.Context
+	renderHTML bool // true for web UI (HTMX), false for API clients
 }
 
 func NewHub(store *storage.Store) *Hub {
@@ -86,7 +88,10 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			h.subscribers[sub.clientID] = sub
 			h.mu.Unlock()
-			slog.Info("Subscriber connected", "client_id", sub.clientID, "total_subscribers", len(h.subscribers))
+			slog.Info("Subscriber connected", "client_id", sub.clientID, "total_subscribers", len(h.subscribers), "format", map[bool]string{true: "html", false: "json"}[sub.renderHTML])
+			if sub.renderHTML {
+				slog.Info("HTML subscriber registered - SSE stream active", "client_id", sub.clientID)
+			}
 			h.broadcastEvent("join", sub.clientID, sub.userID)
 
 		case sub := <-h.unregister:
@@ -100,6 +105,49 @@ func (h *Hub) Run() {
 
 		case msg := <-h.broadcast:
 			h.mu.RLock()
+			
+			// Pre-render HTML if any subscribers want it
+			var htmlFragment string
+			hasHTMLSubs := false
+			htmlSubCount := 0
+			jsonSubCount := 0
+			for _, sub := range h.subscribers {
+				if sub.renderHTML {
+					hasHTMLSubs = true
+					htmlSubCount++
+				} else {
+					jsonSubCount++
+				}
+			}
+			
+			slog.Info("Broadcasting message", "total_subs", len(h.subscribers), "html_subs", htmlSubCount, "json_subs", jsonSubCount)
+			
+			if hasHTMLSubs {
+				var envelope struct {
+					Type string `json:"type"`
+				}
+				if err := json.Unmarshal(msg, &envelope); err != nil {
+					slog.Error("Error unmarshaling broadcast for type detection", "error", err)
+				} else if envelope.Type == "event" {
+					// Render join/leave events as subdued text: "join: alice"
+					var evt client.Event
+					if err := json.Unmarshal(msg, &evt); err != nil {
+						htmlFragment = `<span class="sse-event">` + html.EscapeString(string(msg)) + `</span>`
+					} else {
+						htmlFragment = `<span class="sse-event">` + html.EscapeString(evt.Event) + `: ` + html.EscapeString(evt.UserID) + `</span>`
+					}
+					slog.Debug("Rendered event fragment", "len", len(htmlFragment))
+				} else {
+					var broadcastMsg client.Broadcast
+					if err := json.Unmarshal(msg, &broadcastMsg); err != nil {
+						slog.Error("Error unmarshaling message for HTML rendering", "error", err)
+					} else {
+						htmlFragment = renderMessageHTML(broadcastMsg)
+						slog.Debug("Rendered HTML fragment", "len", len(htmlFragment), "user", broadcastMsg.UserID, "id", broadcastMsg.ID)
+					}
+				}
+			}
+			
 			for _, sub := range h.subscribers {
 				func() {
 					defer func() {
@@ -107,8 +155,17 @@ func (h *Hub) Run() {
 							slog.Warn("Recovered from panic during broadcast", "client_id", sub.clientID, "error", r)
 						}
 					}()
+					
+					var dataToSend []byte
+					if sub.renderHTML {
+						dataToSend = []byte(htmlFragment)
+					} else {
+						dataToSend = msg
+					}
+					
 					select {
-					case sub.send <- msg:
+					case sub.send <- dataToSend:
+						slog.Debug("Queued message for subscriber", "client_id", sub.clientID, "format", map[bool]string{true: "html", false: "json"}[sub.renderHTML])
 					default:
 						slog.Warn("Subscriber send buffer full, dropping message", "client_id", sub.clientID)
 					}
@@ -149,30 +206,43 @@ func (s *Subscriber) writePump() {
 				return
 			}
 
-			// Determine event type from message content
-			var envelope struct {
-				Type string `json:"type"`
-			}
-			if err := json.Unmarshal(msg, &envelope); err != nil {
-				slog.Error("Error unmarshaling message for SSE", "error", err)
-				continue
-			}
+			if s.renderHTML {
+				// HTML subscribers receive pre-rendered fragments.
+				// Send event line so HTMX SSE extension matches sse-swap="message"
+				if _, err := s.writer.Write([]byte("event: message\n")); err != nil {
+					slog.Error("Error writing event line", "error", err, "client_id", s.clientID)
+					return
+				}
+				if _, err := s.writer.Write([]byte("data: " + string(msg) + "\n\n")); err != nil {
+					slog.Error("Error writing data line", "error", err, "client_id", s.clientID)
+					return
+				}
+				s.flusher.Flush()
+			} else {
+				// JSON subscribers: wrap in SSE event format
+				var envelope struct {
+					Type string `json:"type"`
+				}
+				if err := json.Unmarshal(msg, &envelope); err != nil {
+					slog.Error("Error unmarshaling message for SSE", "error", err)
+					continue
+				}
 
-			eventType := "message"
-			if envelope.Type == "event" {
-				eventType = "event"
-			}
+				eventType := "message"
+				if envelope.Type == "event" {
+					eventType = "event"
+				}
 
-			// Write SSE format directly to response writer
-			if _, err := s.writer.Write([]byte("event: " + eventType + "\n")); err != nil {
-				slog.Error("Error writing event line", "error", err, "client_id", s.clientID)
-				return
+				if _, err := s.writer.Write([]byte("event: " + eventType + "\n")); err != nil {
+					slog.Error("Error writing event line", "error", err, "client_id", s.clientID)
+					return
+				}
+				if _, err := s.writer.Write([]byte("data: " + string(msg) + "\n\n")); err != nil {
+					slog.Error("Error writing data line", "error", err, "client_id", s.clientID)
+					return
+				}
+				s.flusher.Flush()
 			}
-			if _, err := s.writer.Write([]byte("data: " + string(msg) + "\n\n")); err != nil {
-				slog.Error("Error writing data line", "error", err, "client_id", s.clientID)
-				return
-			}
-			s.flusher.Flush()
 		}
 	}
 }
@@ -199,6 +269,9 @@ func (h *Hub) HandleSSEStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Determine output format based on query parameter
+	renderHTML := r.URL.Query().Get("format") == "html"
+
 	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -213,17 +286,18 @@ func (h *Hub) HandleSSEStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("SSE connection", "user", userID, "client_id", clientID)
+	slog.Info("SSE connection", "user", userID, "client_id", clientID, "format", map[bool]string{true: "html", false: "json"}[renderHTML])
 
 	subscriber := &Subscriber{
-		hub:      h,
-		send:     make(chan []byte, 256),
-		done:     make(chan struct{}),
-		clientID: clientID,
-		userID:   userID,
-		writer:   w,
-		flusher:  flusher,
-		ctx:      r.Context(),
+		hub:        h,
+		send:       make(chan []byte, 256),
+		done:       make(chan struct{}),
+		clientID:   clientID,
+		userID:     userID,
+		writer:     w,
+		flusher:    flusher,
+		ctx:        r.Context(),
+		renderHTML: renderHTML,
 	}
 
 	h.register <- subscriber

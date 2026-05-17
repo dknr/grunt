@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grunt Chat</title>
     <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/htmx.min.js"></script>
+    <script src="/static/htmx.js"></script>
+    <script src="/static/ext/sse.js"></script>
 </head>
 <body>
     <header class="chat-header">
@@ -19,8 +20,6 @@
     <footer class="chat-footer">
         <form hx-post="/api/chat/message"
               hx-swap="none"
-              hx-headers='{"Content-Type": "application/json"}'
-              hx-on::before-request="event.detail.request.body = JSON.stringify({content: event.detail.request.target.querySelector('[name=content]').value})"
               hx-on::after-request="this.reset(); this.querySelector('[name=content]').style.height='auto'">
             <textarea name="content" placeholder="Type a message..." required rows="1" autocomplete="off"></textarea>
             <div class="send-wrapper">
@@ -32,6 +31,16 @@
             </div>
         </form>
     </footer>
+
+    <!-- HTMX SSE listener for live messages -->
+    <div hx-ext="sse" 
+         sse-connect="/api/chat/stream?format=html" 
+         sse-swap="message"
+         hx-target="#messages"
+         hx-swap="beforeend"
+         id="sse-listener"
+         style="display:none">
+    </div>
 
     <script>
         var isAdmin = {{.Admin}};
@@ -49,21 +58,6 @@
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 form.requestSubmit();
-            }
-        });
-
-        // Connect to SSE stream using native EventSource
-        var source = new EventSource('/api/chat/stream');
-        source.addEventListener('message', function(e) {
-            var data = JSON.parse(e.data);
-            if (data.type === 'message') {
-                var div = document.createElement('div');
-                div.className = 'message';
-                div.setAttribute('data-id', data.id);
-                div.innerHTML = '<strong>' + data.user + '</strong>' +
-                    '<span class="timestamp">' + new Date(data.timestamp).toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'}) + '</span>' +
-                    '<p>' + data.content + '</p>';
-                document.getElementById('messages').appendChild(div);
             }
         });
     </script>

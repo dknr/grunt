@@ -83,6 +83,17 @@ func renderMessages(msgs []client.Broadcast) string {
 	return sb.String()
 }
 
+// renderMessageHTML converts a single broadcast message to an HTML fragment.
+func renderMessageHTML(m client.Broadcast) string {
+	var sb strings.Builder
+	sb.WriteString(`<div class="message" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
+	sb.WriteString(`<strong>` + html.EscapeString(m.UserID) + `</strong>`)
+	sb.WriteString(`<span class="timestamp">` + m.Timestamp.Format("15:04") + `</span>`)
+	sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
+	sb.WriteString(`</div>`)
+	return sb.String()
+}
+
 // handleLoginSubmit processes login form submissions.
 func handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Parse form data
