@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"hash/fnv"
 	"html"
+	"html/template"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -13,6 +15,18 @@ import (
 
 	"grunt/client"
 )
+
+// loginTmpl is the parsed template for the login page.
+var loginTmpl *template.Template
+
+func init() {
+	var err error
+	loginTmpl, err = template.ParseFS(templateFS, "templates/login.html")
+	if err != nil {
+		slog.Error("Failed to parse login template", "error", err)
+		os.Exit(1)
+	}
+}
 
 //go:embed templates/*.html
 var templateFS embed.FS
@@ -69,13 +83,8 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(html))
 	} else {
 		// Not authenticated, serve login form
-		content, err := templateFS.ReadFile("templates/login.html")
-		if err != nil {
-			http.Error(w, "Template not found", http.StatusInternalServerError)
-			return
-		}
 		w.Header().Set("Content-Type", "text/html")
-		w.Write(content)
+		loginTmpl.Execute(w, nil)
 	}
 }
 
@@ -152,7 +161,7 @@ func renderMessageHTML(m client.Broadcast) string {
 func handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		loginTmpl.Execute(w, map[string]string{"Error": "Invalid request body"})
 		return
 	}
 
@@ -160,25 +169,28 @@ func handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	if user == "" || password == "" {
-		http.Error(w, `{"error":"user and password are required"}`, http.StatusBadRequest)
+		loginTmpl.Execute(w, map[string]string{"Error": "User and password are required"})
 		return
 	}
 
 	// Verify credentials
 	ok, err := DefaultStore.VerifyUser(user, password)
 	if err != nil {
-		http.Error(w, `{"error":"failed to verify user"}`, http.StatusInternalServerError)
+		slog.Error("Error verifying user", "error", err)
+		loginTmpl.Execute(w, map[string]string{"Error": "Failed to verify user"})
 		return
 	}
 	if !ok {
-		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
+		slog.Warn("Failed login attempt", "user", user)
+		loginTmpl.Execute(w, map[string]string{"Error": "Invalid credentials"})
 		return
 	}
 
 	// Generate token
 	token, err := DefaultHub.GenerateToken(user)
 	if err != nil {
-		http.Error(w, `{"error":"failed to generate token"}`, http.StatusInternalServerError)
+		slog.Error("Error generating token", "error", err)
+		loginTmpl.Execute(w, map[string]string{"Error": "Failed to generate token"})
 		return
 	}
 
@@ -199,7 +211,7 @@ func handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+		loginTmpl.Execute(w, map[string]string{"Error": "Invalid request body"})
 		return
 	}
 
@@ -208,25 +220,28 @@ func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	inviteCode := r.FormValue("invite_code")
 
 	if user == "" || password == "" || inviteCode == "" {
-		http.Error(w, `{"error":"user, password, and invite code are required"}`, http.StatusBadRequest)
+		loginTmpl.Execute(w, map[string]string{"Error": "User, password, and invite code are required"})
 		return
 	}
 
 	// Validate invite code
 	valid, err := DefaultStore.ValidateInvite(inviteCode)
 	if err != nil {
-		http.Error(w, `{"error":"failed to validate invite code"}`, http.StatusInternalServerError)
+		slog.Error("Error validating invite", "error", err)
+		loginTmpl.Execute(w, map[string]string{"Error": "Failed to validate invite code"})
 		return
 	}
 	if !valid {
-		http.Error(w, `{"error":"invalid or expired invite code"}`, http.StatusUnauthorized)
+		slog.Warn("Registration attempt with invalid invite", "user", user)
+		loginTmpl.Execute(w, map[string]string{"Error": "Invalid or expired invite code"})
 		return
 	}
 
 	// Create user
 	if err := DefaultStore.CreateUser(user, password); err != nil {
 		// Check if user already exists
-		http.Error(w, `{"error":"user already exists"}`, http.StatusConflict)
+		slog.Warn("Registration attempt with existing user", "user", user)
+		loginTmpl.Execute(w, map[string]string{"Error": "User already exists"})
 		return
 	}
 
@@ -239,7 +254,8 @@ func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	// Generate token for auto-login after registration
 	token, err := DefaultHub.GenerateToken(user)
 	if err != nil {
-		http.Error(w, `{"error":"failed to generate token"}`, http.StatusInternalServerError)
+		slog.Error("Error generating token", "error", err)
+		loginTmpl.Execute(w, map[string]string{"Error": "Failed to generate token"})
 		return
 	}
 

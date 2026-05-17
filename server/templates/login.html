@@ -32,7 +32,7 @@
 
         <!-- Toggle between login and register -->
         <a class="toggle-btn" href="#" onclick="toggleAuthForm(); return false;">Don't have an account? Register</a>
-        <div id="response"></div>
+        {{if .Error}}<div id="response"><p class="error-message">{{.Error}}</p></div>{{end}}
     </div>
 
     <script>
