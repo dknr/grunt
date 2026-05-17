@@ -40,6 +40,8 @@ body {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    background-image: url("data:image/svg+xml,%3Csvg width='256' height='256' xmlns='http://www.w3.org/2000/svg'%3E%3Cg opacity='0.06'%3E%3Ccircle cx='42' cy='85' r='2' fill='%23fff'/%3E%3Ccircle cx='178' cy='34' r='1.5' fill='%23fff'/%3E%3Ccircle cx='95' cy='162' r='2.5' fill='%23fff'/%3E%3Ccircle cx='210' cy='198' r='1.5' fill='%23fff'/%3E%3Ccircle cx='65' cy='225' r='2' fill='%23fff'/%3E%3Ccircle cx='145' cy='55' r='1.5' fill='%23fff'/%3E%3Ccircle cx='190' cy='135' r='2.5' fill='%23fff'/%3E%3Ccircle cx='115' cy='210' r='1.5' fill='%23fff'/%3E%3Ccircle cx='55' cy='125' r='2' fill='%23fff'/%3E%3Ccircle cx='165' cy='248' r='1.5' fill='%23fff'/%3E%3Ccircle cx='235' cy='95' r='2.5' fill='%23fff'/%3E%3Ccircle cx='80' cy='215' r='1.5' fill='%23fff'/%3E%3C/g%3E%3C/svg%3E");
+    background-repeat: repeat;
 }
 
 /* === Sticky Header === */
