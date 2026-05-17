@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"grunt/client"
 )
@@ -29,13 +30,16 @@ type ChatData struct {
 }
 
 type MessageTemplateData struct {
-	ID        int
-	User      string
-	Content   string
-	Timestamp string
-	Color     string
-	TextColor string
-	Initial   string
+	ID            int
+	User          string
+	Content       string
+	Timestamp     string
+	Color         string
+	TextColor     string
+	Initial       string
+	ShowAvatar    bool
+	ShowUsername  bool
+	ShowTimestamp bool
 }
 
 // Templates parsed in init()
@@ -110,14 +114,33 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 
 		msgs := make([]MessageTemplateData, len(messages))
 		for i, m := range messages {
+			showAvatar := true
+			showUsername := true
+			showTimestamp := true
+
+			if i > 0 {
+				prev := messages[i-1]
+				if prev.UserID == m.UserID {
+					showAvatar = false
+					showUsername = false
+					timeDiff := m.Timestamp.Sub(prev.Timestamp)
+					if timeDiff <= time.Minute {
+						showTimestamp = false
+					}
+				}
+			}
+
 			msgs[i] = MessageTemplateData{
-				ID:        int(m.ID),
-				User:      m.UserID,
-				Content:   m.Content,
-				Timestamp: m.Timestamp.Format("15:04"),
-				Color:     avatarColor(m.UserID),
-				TextColor: avatarTextColor(m.UserID),
-				Initial:   strings.ToUpper(string([]rune(m.UserID)[0])),
+				ID:            int(m.ID),
+				User:          m.UserID,
+				Content:       m.Content,
+				Timestamp:     m.Timestamp.Format("15:04"),
+				Color:         avatarColor(m.UserID),
+				TextColor:     avatarTextColor(m.UserID),
+				Initial:       strings.ToUpper(string([]rune(m.UserID)[0])),
+				ShowAvatar:    showAvatar,
+				ShowUsername:  showUsername,
+				ShowTimestamp: showTimestamp,
 			}
 		}
 
@@ -161,15 +184,18 @@ func avatarTextColor(userID string) string {
 
 // renderMessageHTMLTemplate renders a single broadcast message using the message template.
 // This is used by the Hub for SSE HTML streaming.
-func renderMessageHTMLTemplate(m client.Broadcast) string {
+func renderMessageHTMLTemplate(m client.Broadcast, showAvatar, showUsername, showTimestamp bool) string {
 	msg := MessageTemplateData{
-		ID:        int(m.ID),
-		User:      m.UserID,
-		Content:   m.Content,
-		Timestamp: m.Timestamp.Format("15:04"),
-		Color:     avatarColor(m.UserID),
-		TextColor: avatarTextColor(m.UserID),
-		Initial:   strings.ToUpper(string([]rune(m.UserID)[0])),
+		ID:            int(m.ID),
+		User:          m.UserID,
+		Content:       m.Content,
+		Timestamp:     m.Timestamp.Format("15:04"),
+		Color:         avatarColor(m.UserID),
+		TextColor:     avatarTextColor(m.UserID),
+		Initial:       strings.ToUpper(string([]rune(m.UserID)[0])),
+		ShowAvatar:    showAvatar,
+		ShowUsername:  showUsername,
+		ShowTimestamp: showTimestamp,
 	}
 
 	var buf bytes.Buffer

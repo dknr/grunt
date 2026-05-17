@@ -53,6 +53,11 @@ type Hub struct {
 	broadcast    chan []byte
 	register     chan *Subscriber
 	unregister   chan *Subscriber
+
+	// Last rendered message for consecutive-display logic
+	lastMsgUser   string
+	lastMsgTime   time.Time
+	lastMsgMu     sync.RWMutex
 }
 
 type Subscriber struct {
@@ -142,7 +147,26 @@ func (h *Hub) Run() {
 					if err := json.Unmarshal(msg, &broadcastMsg); err != nil {
 						slog.Error("Error unmarshaling message for HTML rendering", "error", err)
 					} else {
-						htmlFragment = renderMessageHTMLTemplate(broadcastMsg)
+						h.lastMsgMu.RLock()
+						showAvatar := true
+						showUsername := true
+						showTimestamp := true
+						if h.lastMsgUser == broadcastMsg.UserID {
+							showAvatar = false
+							showUsername = false
+							if time.Since(h.lastMsgTime) <= time.Minute {
+								showTimestamp = false
+							}
+						}
+						h.lastMsgMu.RUnlock()
+
+						htmlFragment = renderMessageHTMLTemplate(broadcastMsg, showAvatar, showUsername, showTimestamp)
+
+						h.lastMsgMu.Lock()
+						h.lastMsgUser = broadcastMsg.UserID
+						h.lastMsgTime = broadcastMsg.Timestamp
+						h.lastMsgMu.Unlock()
+
 						slog.Debug("Rendered HTML fragment", "len", len(htmlFragment), "user", broadcastMsg.UserID, "id", broadcastMsg.ID)
 					}
 				}

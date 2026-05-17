@@ -55,11 +55,14 @@ func TestChatTemplate_Parses(t *testing.T) {
 func TestChatTemplate_RenderWithMessages(t *testing.T) {
 	msgs := []MessageTemplateData{
 		{
-			ID:        1,
-			User:      "alice",
-			Content:   "hello",
-			Timestamp: "14:30",
-			Color:     "#3b82f6",
+			ID:            1,
+			User:          "alice",
+			Content:       "hello",
+			Timestamp:     "14:30",
+			Color:         "#3b82f6",
+			ShowAvatar:    true,
+			ShowUsername:  true,
+			ShowTimestamp: true,
 		},
 	}
 	data := ChatData{
@@ -226,7 +229,7 @@ func TestRenderMessageHTMLTemplate(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	result := renderMessageHTMLTemplate(bcast)
+	result := renderMessageHTMLTemplate(bcast, true, true, true)
 	if !strings.Contains(result, "test message") {
 		t.Error("missing content in rendered message")
 	}
@@ -246,7 +249,7 @@ func TestRenderMessageHTMLTemplate_EscapesContent(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	result := renderMessageHTMLTemplate(bcast)
+	result := renderMessageHTMLTemplate(bcast, true, true, true)
 	if strings.Contains(result, "<script>") {
 		t.Error("raw <script> should be escaped in output")
 	}
@@ -269,7 +272,7 @@ func TestRenderMessageHTMLTemplate_MultilineContent(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	result := renderMessageHTMLTemplate(bcast)
+result := renderMessageHTMLTemplate(bcast, true, true, true)
 	if !strings.Contains(result, "line one") {
 		t.Error("missing first line in rendered message")
 	}

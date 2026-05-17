@@ -60,7 +60,7 @@ body {
 .chat-header .header-inner {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     width: 100%;
     max-width: 800px;
     margin: 0 auto;
@@ -103,7 +103,6 @@ body {
 main#messages {
     flex: 1;
     overflow-y: auto;
-    padding-top: 8px;
     padding-left: 0;
     padding-right: 24px;
     padding-bottom: 8px;
@@ -294,14 +293,18 @@ button:active {
 #messages {
     display: flex;
     flex-direction: column;
-    gap: 8px;
 }
 
 .message-row {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
+    gap: 8px;
     padding-left: 24px;
+    margin-top: 8px;
+}
+
+.message-row.message-row--grouped {
+    margin-top: 4px;
 }
 
 .message-row .avatar-col {
@@ -335,27 +338,41 @@ button:active {
 .message-row .message-bubble {
     flex: 1;
     min-width: 0;
-    min-height: 48px;
-    padding: 4px 8px;
     background-color: var(--bg-secondary);
     border-radius: 8px;
     transition: background-color 0.2s ease;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
 }
 
-.message-row .username {
-    font-weight: 600;
-    font-size: 14px;
+.username-bubble-wrapper {
+    display: flex;
+    flex-direction: column;
+}
+
+.message-row .msg-username {
+    height: 16px;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+}
+
+.message-row .msg-username h4 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 200;
+    line-height: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-secondary);
 }
 
 .message-row p {
-    margin: 2px 0 0 0;
+    margin: 6px 8px 8px 8px;
     color: var(--text-primary);
     word-break: break-word;
     white-space: pre-wrap;
-    font-size: 15px;
+    font-size: 16px;
+    line-height: 18px;
 }
 
 /* === Sections (settings page) === */
