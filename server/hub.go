@@ -142,7 +142,7 @@ func (h *Hub) Run() {
 					if err := json.Unmarshal(msg, &broadcastMsg); err != nil {
 						slog.Error("Error unmarshaling message for HTML rendering", "error", err)
 					} else {
-						htmlFragment = renderMessageHTML(broadcastMsg)
+						htmlFragment = renderMessageHTMLTemplate(broadcastMsg)
 						slog.Debug("Rendered HTML fragment", "len", len(htmlFragment), "user", broadcastMsg.UserID, "id", broadcastMsg.ID)
 					}
 				}

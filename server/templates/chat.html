@@ -13,10 +13,10 @@
         <div class="header-inner">
             <div class="brand-icon"></div>
             <h1>Grunt</h1>
-            <a href="/settings" class="profile-icon"></a>
+            {{template "avatar" .Profile}}
         </div>
     </header>
-    <main id="messages">{{.Messages}}</main>
+    <main id="messages">{{range .Messages}}{{template "message" .}}{{end}}</main>
     <footer class="chat-footer">
         <form hx-post="/api/chat/message"
               hx-swap="none"
@@ -43,8 +43,6 @@
     </div>
 
     <script>
-        var isAdmin = {{.Admin}};
-
         // Auto-expand textarea as user types
         var textarea = document.querySelector('[name="content"]');
         var form = textarea.closest('form');

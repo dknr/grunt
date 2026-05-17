@@ -1,0 +1,1 @@
+{{define "message"}}<div class="message-row"><div class="avatar-col"><div class="avatar">{{template "avatar_svg" .}}</div><span class="timestamp">{{.Timestamp}}</span></div><div class="message-bubble" data-id="{{.ID}}"><strong class="username" style="color: {{.Color}}">{{.User}}</strong><p>{{.Content}}</p></div></div>{{end}}

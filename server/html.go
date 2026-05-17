@@ -1,9 +1,9 @@
 package server
 
 import (
-	"fmt"
+	"bytes"
+	"embed"
 	"hash/fnv"
-	"html"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -11,24 +11,70 @@ import (
 	"strconv"
 	"strings"
 
-	"embed"
-
 	"grunt/client"
 )
 
-// loginTmpl is the parsed template for the login page.
-var loginTmpl *template.Template
+// Template data structures
+type AvatarData struct {
+	UserID    string
+	URL       string
+	Color     string
+	TextColor string
+	Initial   string
+}
+
+type ChatData struct {
+	Messages []MessageTemplateData
+	Profile  AvatarData
+}
+
+type MessageTemplateData struct {
+	ID        int
+	User      string
+	Content   string
+	Timestamp string
+	Color     string
+	TextColor string
+	Initial   string
+}
+
+// Templates parsed in init()
+var (
+	loginTmpl    *template.Template
+	chatTmpl     *template.Template
+	settingsTmpl *template.Template
+	messageTmpl  *template.Template // for SSE streaming in Hub
+)
 
 func init() {
 	var err error
+
+	// Login template is standalone
 	loginTmpl, err = template.ParseFS(templateFS, "templates/login.html")
 	if err != nil {
 		slog.Error("Failed to parse login template", "error", err)
 		os.Exit(1)
 	}
+
+	// All other templates share a single namespace so they can reference each other
+	allTemplates := []string{
+		"templates/partials/avatar.html",
+		"templates/partials/message.html",
+		"templates/chat.html",
+		"templates/settings.html",
+	}
+	combined, err := template.ParseFS(templateFS, allTemplates...)
+	if err != nil {
+		slog.Error("Failed to parse combined templates", "error", err)
+		os.Exit(1)
+	}
+
+	chatTmpl = combined.Lookup("chat.html")
+	settingsTmpl = combined.Lookup("settings.html")
+	messageTmpl = combined.Lookup("message.html")
 }
 
-//go:embed templates/*.html
+//go:embed templates/login.html templates/chat.html templates/settings.html templates/partials/avatar.html templates/partials/message.html
 var templateFS embed.FS
 
 //go:embed static
@@ -52,35 +98,34 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Render chat page with messages
-		content, err := templateFS.ReadFile("templates/chat.html")
-		if err != nil {
-			http.Error(w, "Template not found", http.StatusInternalServerError)
-			return
-		}
-
-		// Replace placeholders with message HTML, admin status, and profile avatar
-		messageHTML := renderMessages(messages)
-		html := string(content)
-		html = strings.Replace(html, "{{.Messages}}", messageHTML, 1)
-		if IsAdminFromContext(r) {
-			html = strings.Replace(html, "{{.Admin}}", "true", 1)
-		} else {
-			html = strings.Replace(html, "{{.Admin}}", "false", 1)
-		}
-
-		// Replace profile icon with hash-based avatar
+		// Build template data
 		userID := UserIDFromContext(r)
-		if userID != "" {
-			html = strings.Replace(html, `<a href="/settings" class="profile-icon"></a>`,
-				`<a href="/settings"><div class="avatar">`+generateAvatarSVG(userID)+`</div></a>`, 1)
+		profile := AvatarData{
+			UserID:    userID,
+			URL:       "/settings",
+			Color:     avatarColor(userID),
+			TextColor: avatarTextColor(userID),
+			Initial:   strings.ToUpper(string([]rune(userID)[0])),
+		}
+
+		msgs := make([]MessageTemplateData, len(messages))
+		for i, m := range messages {
+			msgs[i] = MessageTemplateData{
+				ID:        int(m.ID),
+				User:      m.UserID,
+				Content:   m.Content,
+				Timestamp: m.Timestamp.Format("15:04"),
+				Color:     avatarColor(m.UserID),
+				TextColor: avatarTextColor(m.UserID),
+				Initial:   strings.ToUpper(string([]rune(m.UserID)[0])),
+			}
 		}
 
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
-		w.Write([]byte(html))
+		chatTmpl.Execute(w, ChatData{Messages: msgs, Profile: profile})
 	} else {
 		// Not authenticated, serve login form
 		w.Header().Set("Content-Type", "text/html")
@@ -114,47 +159,29 @@ func avatarTextColor(userID string) string {
 	return "#fff"
 }
 
-// generateAvatarSVG produces a deterministic avatar SVG from the given userID.
-func generateAvatarSVG(userID string) string {
-	initial := "?"
-	if len(userID) > 0 {
-		runeSlice := []rune(userID)
-		initial = strings.ToUpper(string(runeSlice[0]))
+// renderMessageHTMLTemplate renders a single broadcast message using the message template.
+// This is used by the Hub for SSE HTML streaming.
+func renderMessageHTMLTemplate(m client.Broadcast) string {
+	msg := MessageTemplateData{
+		ID:        int(m.ID),
+		User:      m.UserID,
+		Content:   m.Content,
+		Timestamp: m.Timestamp.Format("15:04"),
+		Color:     avatarColor(m.UserID),
+		TextColor: avatarTextColor(m.UserID),
+		Initial:   strings.ToUpper(string([]rune(m.UserID)[0])),
 	}
 
-	return `<svg width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="` + avatarColor(userID) + `" /><text x="16" y="16" text-anchor="middle" dominant-baseline="central" fill="` + avatarTextColor(userID) + `" font-size="18" font-weight="bold" font-family="system-ui, sans-serif">` + html.EscapeString(initial) + `</text></svg>`
-}
-
-// renderMessages converts a slice of broadcasts to HTML.
-func renderMessages(msgs []client.Broadcast) string {
-	var sb strings.Builder
-	for _, m := range msgs {
-		sb.WriteString(`<div class="message-row">`)
-		sb.WriteString(`<div class="avatar-col">`)
-		sb.WriteString(`<div class="avatar">` + generateAvatarSVG(m.UserID) + `</div>`)
-		sb.WriteString(`<span class="timestamp">` + m.Timestamp.Format("15:04") + `</span>`)
-		sb.WriteString(`</div>`)
-		sb.WriteString(`<div class="message-bubble" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
-		sb.WriteString(`<strong class="username" style="color: ` + avatarColor(m.UserID) + `">` + html.EscapeString(m.UserID) + `</strong>`)
-		sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
-		sb.WriteString(`</div></div>`)
+	var buf bytes.Buffer
+	if err := messageTmpl.ExecuteTemplate(&buf, "message", msg); err != nil {
+		slog.Error("Failed to render message template", "error", err)
+		return `<div class="message-row"><p>Error rendering message</p></div>`
 	}
-	return sb.String()
-}
 
-// renderMessageHTML converts a single broadcast message to an HTML fragment.
-func renderMessageHTML(m client.Broadcast) string {
-	var sb strings.Builder
-	sb.WriteString(`<div class="message-row">`)
-	sb.WriteString(`<div class="avatar-col">`)
-	sb.WriteString(`<div class="avatar">` + generateAvatarSVG(m.UserID) + `</div>`)
-	sb.WriteString(`<span class="timestamp">` + m.Timestamp.Format("15:04") + `</span>`)
-	sb.WriteString(`</div>`)
-	sb.WriteString(`<div class="message-bubble" data-id="` + fmt.Sprintf("%d", m.ID) + `">`)
-	sb.WriteString(`<strong class="username" style="color: ` + avatarColor(m.UserID) + `">` + html.EscapeString(m.UserID) + `</strong>`)
-	sb.WriteString(`<p>` + html.EscapeString(m.Content) + `</p>`)
-	sb.WriteString(`</div></div>`)
-	return sb.String()
+	// Replace literal newlines with <br> so the rendered fragment doesn't contain
+	// newline characters that would break the SSE protocol.
+	html := buf.String()
+	return strings.ReplaceAll(html, "\n", "<br>")
 }
 
 // handleLoginSubmit processes login form submissions.
@@ -279,28 +306,17 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content, err := templateFS.ReadFile("templates/settings.html")
-	if err != nil {
-		http.Error(w, "Template not found", http.StatusInternalServerError)
-		return
-	}
-
-	html := string(content)
-	if IsAdminFromContext(r) {
-		html = strings.Replace(html, "{{.Admin}}", "true", 1)
-	} else {
-		html = strings.Replace(html, "{{.Admin}}", "false", 1)
-	}
-
-	// Replace profile icon with hash-based avatar linking back to chat
 	userID := UserIDFromContext(r)
-	if userID != "" {
-		html = strings.Replace(html, `<a href="/" class="profile-icon"></a>`,
-			`<a href="/"><div class="avatar">`+generateAvatarSVG(userID)+`</div></a>`, 1)
+	profile := AvatarData{
+		UserID:    userID,
+		URL:       "/",
+		Color:     avatarColor(userID),
+		TextColor: avatarTextColor(userID),
+		Initial:   strings.ToUpper(string([]rune(userID)[0])),
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(html))
+	settingsTmpl.Execute(w, map[string]AvatarData{"Profile": profile})
 }
 
 // handleLogoutSubmit processes logout requests.
