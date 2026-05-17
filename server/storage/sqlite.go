@@ -97,7 +97,7 @@ func (s *Store) CreateUser(user, password string) error {
 		hash = &str
 	}
 	_, err := s.db.Exec(
-		"INSERT OR IGNORE INTO users (user, password_hash) VALUES (?, ?)",
+		"INSERT INTO users (user, password_hash) VALUES (?, ?)",
 		user, hash,
 	)
 	return err
@@ -105,7 +105,7 @@ func (s *Store) CreateUser(user, password string) error {
 
 func (s *Store) CreateUserNoPassword(user string) error {
 	_, err := s.db.Exec(
-		"INSERT OR IGNORE INTO users (user, password_hash) VALUES (?, NULL)",
+		"INSERT INTO users (user, password_hash) VALUES (?, NULL)",
 		user,
 	)
 	return err
