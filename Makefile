@@ -3,8 +3,17 @@ COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DIRTY    ?= $(shell git diff --quiet HEAD 2>/dev/null || echo "+dirty")
 TIMESTAMP?= $(shell date -u +"%Y-%m-%dT%H:%M:%S")
 
+# Calculate commits ahead of the last tag (re-add v prefix for git)
+BEHIND   ?= $(shell git rev-list --count v$(VERSION)..HEAD 2>/dev/null || echo "0")
+
+ifeq ($(BEHIND),0)
+  FULL_VERSION := $(VERSION)
+else
+  FULL_VERSION := $(VERSION)+$(BEHIND)
+endif
+
 LDFLAGS := -s -w \
-	-X grunt.Version=$(VERSION)$(DIRTY) \
+	-X grunt.Version=$(FULL_VERSION)$(DIRTY) \
 	-X grunt.Timestamp=$(TIMESTAMP) \
 	-X grunt.Commit=$(COMMIT)
 
@@ -41,7 +50,7 @@ test-short:
 	cd cmd && go test -v ./...
 
 version:
-	@echo "Version: $(VERSION)$(DIRTY)"
+	@echo "Version: $(FULL_VERSION)$(DIRTY)"
 	@echo "Commit:  $(COMMIT)"
 	@echo "Time:    $(TIMESTAMP)"
 
