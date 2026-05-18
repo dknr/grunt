@@ -14,6 +14,7 @@ import (
 
 	"grunt"
 	"grunt/client"
+	"grunt/server/storage"
 )
 
 // Template data structures
@@ -346,6 +347,24 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 		Initial:   strings.ToUpper(string([]rune(userID)[0])),
 	}
 
+	var users []storage.UserInfo
+	var keys []storage.APIKeyInfoFull
+	if isAdmin {
+		var err error
+		users, err = DefaultStore.ListUsers()
+		if err != nil {
+			slog.Error("Error listing users", "error", err)
+			http.Error(w, "Failed to load users", http.StatusInternalServerError)
+			return
+		}
+		keys, err = DefaultStore.ListAllAPIKeys()
+		if err != nil {
+			slog.Error("Error listing API keys", "error", err)
+			http.Error(w, "Failed to load API keys", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	settingsTmpl.Execute(w, map[string]interface{}{
 		"Profile":    profile,
@@ -353,6 +372,8 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 		"Version":    grunt.Version,
 		"Timestamp":  grunt.Timestamp,
 		"Commit":     grunt.Commit,
+		"Users":      users,
+		"Keys":       keys,
 	})
 }
 

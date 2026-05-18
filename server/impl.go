@@ -355,9 +355,23 @@ func (a *apiImpl) AdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req AdminCreateUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "json") {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			if isHTMXRequest(r) {
+				w.Header().Set("Content-Type", "text/html")
+				w.Write([]byte(`<p class="error">Invalid request body.</p>`))
+				return
+			}
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+		req.User = r.FormValue("user")
 	}
 	if req.User == "" {
 		http.Error(w, `{"error":"user is required"}`, http.StatusBadRequest)
@@ -372,6 +386,21 @@ func (a *apiImpl) AdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("Admin created user", "user", req.User, "admin", userID)
+
+	if isHTMXRequest(r) {
+		users, err := a.store.ListUsers()
+		if err != nil {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Failed to reload users.</p>`))
+			return
+		}
+		var sb strings.Builder
+		renderUsersList(&sb, users)
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(sb.String()))
+		return
+	}
+
 	w.WriteHeader(http.StatusCreated)
 	msg := MessageResponse{
 		Message: strPtr("user created"),
@@ -403,14 +432,32 @@ func (a *apiImpl) AdminCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req AdminCreateAPIKeyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		if isHTMXRequest(r) {
-			w.Header().Set("Content-Type", "text/html")
-			w.Write([]byte(`<p class="error">Invalid request body.</p>`))
+	contentType := r.Header.Get("Content-Type")
+	if strings.Contains(contentType, "json") {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if isHTMXRequest(r) {
+				w.Header().Set("Content-Type", "text/html")
+				w.Write([]byte(`<p class="error">Invalid request body.</p>`))
+				return
+			}
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
 			return
 		}
-		http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
-		return
+	} else {
+		if err := r.ParseForm(); err != nil {
+			if isHTMXRequest(r) {
+				w.Header().Set("Content-Type", "text/html")
+				w.Write([]byte(`<p class="error">Invalid request body.</p>`))
+				return
+			}
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+		req.UserId = r.FormValue("user_id")
+		req.Name = strPtr(r.FormValue("name"))
+		if *req.Name == "" {
+			req.Name = nil
+		}
 	}
 	if req.UserId == "" {
 		if isHTMXRequest(r) {
@@ -457,10 +504,19 @@ func (a *apiImpl) AdminCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Admin created API key", "user_id", req.UserId, "admin", adminID, "name", nameStr)
 
 	if isHTMXRequest(r) {
-		w.Header().Set("Content-Type", "text/html")
+		keys, err := a.store.ListAllAPIKeys()
+		if err != nil {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Failed to reload keys.</p>`))
+			return
+		}
 		resultHTML := fmt.Sprintf(`<div class="success"><strong>New API Key (shown once):</strong><br>%s<br><small>ID: %d, Name: %s</small></div>`,
 			html.EscapeString(rawKey), keyID, html.EscapeString(nameStr))
-		w.Write([]byte(resultHTML))
+		var sb strings.Builder
+		sb.WriteString(resultHTML)
+		renderKeyTableHTML(&sb, keys)
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(sb.String()))
 		return
 	}
 
@@ -493,19 +549,16 @@ func (a *apiImpl) AdminRevokeAPIKey(w http.ResponseWriter, r *http.Request, keyI
 	slog.Info("Admin revoked API key", "key_id", keyId, "admin", adminID)
 
 	if isHTMXRequest(r) {
-		userID := r.URL.Query().Get("user_id")
-		if userID != "" {
-			keys, err := a.store.ListAPIKeys(userID)
-			if err != nil {
-				w.Header().Set("Content-Type", "text/html")
-				w.Write([]byte(`<p class="error">Failed to reload keys.</p>`))
-				return
-			}
-			renderKeyTableHTML(w, keys)
+		keys, err := a.store.ListAllAPIKeys()
+		if err != nil {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Failed to reload keys.</p>`))
 			return
 		}
+		var sb strings.Builder
+		renderKeyTableHTML(&sb, keys)
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<p class="success">Key revoked.</p>`))
+		w.Write([]byte(sb.String()))
 		return
 	}
 
@@ -521,15 +574,14 @@ func isHTMXRequest(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
 
-// renderKeyTableHTML renders an HTML table of API keys for a given user.
-func renderKeyTableHTML(w http.ResponseWriter, keys []storage.APIKeyInfo) {
+// renderKeyTableHTML renders an HTML table of API keys into the given string builder.
+func renderKeyTableHTML(sb *strings.Builder, keys []storage.APIKeyInfoFull) {
 	if len(keys) == 0 {
-		w.Write([]byte(`<p style="color: #888; margin-top: 0.5rem;">No API keys for this user.</p>`))
+		sb.WriteString(`<p style="color: #888; margin-top: 0.5rem;">No API keys created.</p>`)
 		return
 	}
 
-	var sb strings.Builder
-	sb.WriteString(`<table><thead><tr><th>ID</th><th>Name</th><th>Created</th><th></th></tr></thead><tbody>`)
+	sb.WriteString(`<table><thead><tr><th>ID</th><th>User</th><th>Name</th><th>Created</th><th></th></tr></thead><tbody>`)
 	for _, k := range keys {
 		ts := "unknown"
 		if !k.CreatedAt.IsZero() {
@@ -543,14 +595,32 @@ func renderKeyTableHTML(w http.ResponseWriter, keys []storage.APIKeyInfo) {
 		}
 		sb.WriteString(`<tr>`)
 		sb.WriteString(fmt.Sprintf(`<td>%d</td>`, k.ID))
+		sb.WriteString(fmt.Sprintf(`<td>%s</td>`, html.EscapeString(k.UserID)))
 		sb.WriteString(fmt.Sprintf(`<td>%s</td>`, nameStr))
 		sb.WriteString(fmt.Sprintf(`<td>%s</td>`, ts))
-		sb.WriteString(fmt.Sprintf(`<td><button type="button" hx-delete="/api/admin/api-keys/%d" hx-target="#api-keys-table-container" hx-swap="innerHTML" onclick="if(!confirm('Revoke this key?'))event.preventDefault()">Revoke</button></td>`, k.ID))
+		sb.WriteString(fmt.Sprintf(`<td><button type="button" hx-delete="/api/admin/api-keys/%d" hx-target="#api-keys-table-container" hx-swap="innerHTML" hx-headers='{"Accept": "text/html"}' onclick="if(!confirm('Revoke this key?'))event.preventDefault()">Revoke</button></td>`, k.ID))
 		sb.WriteString(`</tr>`)
 	}
 	sb.WriteString(`</tbody></table>`)
+}
 
-	w.Write([]byte(sb.String()))
+// renderUsersList renders an HTML list of users into the given string builder.
+func renderUsersList(sb *strings.Builder, users []storage.UserInfo) {
+	if len(users) == 0 {
+		sb.WriteString(`<p style="color: #888; margin-top: 0.5rem;">No users found.</p>`)
+		return
+	}
+
+	for _, u := range users {
+		sb.WriteString(`<div class="user-row">`)
+		sb.WriteString(fmt.Sprintf(`<span>%s</span>`, html.EscapeString(u.Username)))
+		if u.IsAdmin {
+			sb.WriteString(`<span class="badge admin">Admin</span>`)
+		} else {
+			sb.WriteString(`<span class="badge user">User</span>`)
+		}
+		sb.WriteString(`</div>`)
+	}
 }
 
 // generateAPIKey generates a new API key with the gk_ prefix.

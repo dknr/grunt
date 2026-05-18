@@ -392,7 +392,8 @@ button:active {
 
 /* === Sections (settings page) === */
 .section {
-    width: 360px;
+    max-width: 800px;
+    width: 100%;
     margin-bottom: 8px;
     padding: 24px;
     border: 1px solid var(--border);
@@ -401,9 +402,14 @@ button:active {
 }
 
 .section h2 {
-    margin-top: 0;
+    margin-top: 24px;
+    margin-bottom: 16px;
     font-size: 18px;
     color: var(--text-primary);
+}
+
+.section h2:first-of-type {
+    margin-top: 0;
 }
 
 /* === Utility Classes === */
@@ -489,4 +495,33 @@ a:hover {
 
 .version-footer span {
     margin: 0 4px;
+}
+
+/* === Admin Table Styles === */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+
+th, td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+th {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    color: var(--text-primary);
+}
+
+tr:hover {
+    background-color: var(--bg-tertiary);
 }

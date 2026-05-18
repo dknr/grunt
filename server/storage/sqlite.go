@@ -337,6 +337,29 @@ func (s *Store) RevokeAPIKey(keyID int64) error {
 }
 
 // HashAPIKey computes the SHA-256 hash of an API key string.
+func (s *Store) ListUsers() ([]UserInfo, error) {
+	rows, err := s.db.Query("SELECT user, is_admin FROM users ORDER BY user")
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []UserInfo
+	for rows.Next() {
+		var u UserInfo
+		if err := rows.Scan(&u.Username, &u.IsAdmin); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+type UserInfo struct {
+	Username string `json:"username"`
+	IsAdmin  bool   `json:"is_admin"`
+}
+
 func HashAPIKey(key string) string {
 	h := sha256.Sum256([]byte(key))
 	return fmt.Sprintf("%x", h)
