@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.3 — Google Fonts Emoji & Documentation
+
+### Features
+- Integrated Google Fonts CDN for Noto Color Emoji rendering
+- Added `.noto-color-emoji-regular` CSS class per font instructions
+- Appended `'Noto Color Emoji'` to `--font-sans` variable as fallback
+
+### Documentation
+- Rewrote README with comprehensive architecture, API, and testing sections
+- Fixed CHANGELOG entries to reflect cumulative changes between tags
+
 ## v0.5.2 — Web UI Redesign & Mobile Support
 
 ### Architecture

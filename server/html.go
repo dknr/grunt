@@ -396,6 +396,8 @@ func HandleStatic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/css")
 	case strings.HasSuffix(filePath, ".html"):
 		w.Header().Set("Content-Type", "text/html")
+	case strings.HasSuffix(filePath, ".woff2"):
+		w.Header().Set("Content-Type", "font/woff2")
 	default:
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
