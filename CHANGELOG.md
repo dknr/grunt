@@ -1,27 +1,36 @@
 # Changelog
 
-## v0.5.5 — Runtime Emote File Watcher
+## v0.5.5 — Emote System & Runtime File Watcher
 
 ### Features
-- Runtime emote file watcher using `fsnotify` for live reload of image emotes
+- Server-side emote rendering with `:name:` token replacement and `<img>` tag generation
+- Static emote directory (`server/static/emotes/`) scanned at startup for `.svg`, `.png`, `.gif`, `.webp` files
+- Build-in emoji map with built-in tokens (:smile:, :heart:) and image-based emotes
+- Runtime emote file watcher using `fsnotify` for live reload of image emotes without restart
 - Emote directory resolved via `$GRUNT_EMOTE_DIR` > `$XDG_DATA_HOME/grunt/emotes` > `$HOME/.local/share/grunt/emotes`
-- Serve runtime emotes at `/emotes/<filename>` from disk (`.svg`, `.png`, `.gif`, `.webp`)
+- Serve runtime emotes at `/emotes/<filename>` from disk with proper Content-Type headers
 - Thread-safe `emoteMap` with `sync.RWMutex` for concurrent `ReplaceEmotes` calls
 - Startup log shows resolved path and emote count; file add/remove events are logged
 
-### Cleanup
-- Removed embedded `server/static/emotes/` directory — all emotes now loaded from disk at runtime
+### Fixes
+- Updated message template to use `{{.RenderedContent}}` instead of `{{.Content}}` for emote rendering
 
-## v0.5.4 — Server-Side Emote Rendering
+## v0.5.4 — Admin Settings & Version Improvements
+
+### Features
+- Added admin user and API key management to settings page
+
+### Fixes
+- Improved version string calculation to show commits ahead of the last tag
+
+## v0.5.3 — Emoji Fonts & Documentation Update
 
 ### Features
 - Integrated Google Fonts CDN for Noto Color Emoji rendering
-- Added `.noto-color-emoji-regular` CSS class per font instructions
-- Appended `'Noto Color Emoji'` to `--font-sans` variable as fallback
+- Appended `'Noto Color Emoji'` to `--font-sans` CSS variable as fallback
 
 ### Documentation
-- Rewrote README with comprehensive architecture, API, and testing sections
-- Fixed CHANGELOG entries to reflect cumulative changes between tags
+- Rewrote README with comprehensive architecture, API reference, and testing sections
 
 ## v0.5.2 — Web UI Redesign & Mobile Support
 
