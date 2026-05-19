@@ -2,6 +2,8 @@ package server
 
 import (
 	"html/template"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -86,7 +88,21 @@ func TestEmoteMapCompleteness(t *testing.T) {
 }
 
 func TestImageEmotesLoaded(t *testing.T) {
-	// Verify image emotes were loaded during init()
+	// Create a temporary directory with test emote files to verify loading logic.
+	tmpDir := t.TempDir()
+
+	// Create minimal test files (empty files are sufficient for this test)
+	testFiles := []string{"wave.svg", "clap.png", "fire.gif"}
+	for _, f := range testFiles {
+		if err := os.WriteFile(filepath.Join(tmpDir, f), []byte{}, 0644); err != nil {
+			t.Fatalf("failed to create test emote file %q: %v", f, err)
+		}
+	}
+
+	// Scan the temp directory
+	scanImageEmotes(tmpDir)
+
+	// Verify image emotes were loaded
 	expectedImages := []string{"wave", "clap", "fire"}
 	for _, name := range expectedImages {
 		replacement, ok := emoteMap[name]
@@ -94,12 +110,69 @@ func TestImageEmotesLoaded(t *testing.T) {
 			t.Errorf("image emote %q not found in emoteMap", name)
 			continue
 		}
-		// Check it's an img tag
-		if !strings.Contains(replacement, `<img src="/static/emotes/`) {
-			t.Errorf("image emote %q is not an img tag: %q", name, replacement)
+		// Check it's an img tag with the correct source path
+		if !strings.Contains(replacement, `<img src="/emotes/`) {
+			t.Errorf("image emote %q is not a runtime img tag: %q", name, replacement)
 		}
 		if !strings.Contains(replacement, `class="emote"`) {
 			t.Errorf("image emote %q missing emote class", name)
 		}
+	}
+
+	// Verify text emoji are still present
+	for name := range textEmoteNames {
+		if _, ok := emoteMap[name]; !ok {
+			t.Errorf("text emote %q was removed from emoteMap", name)
+		}
+	}
+}
+
+func TestResolveEmotePath(t *testing.T) {
+	// Save and restore original env vars
+	origHome := os.Getenv("HOME")
+	origXDG := os.Getenv("XDG_DATA_HOME")
+	origGrunt := os.Getenv("GRUNT_EMOTE_DIR")
+	defer func() {
+		os.Setenv("HOME", origHome)
+		os.Setenv("XDG_DATA_HOME", origXDG)
+		os.Setenv("GRUNT_EMOTE_DIR", origGrunt)
+	}()
+
+	tests := []struct {
+		name     string
+		home     string
+		xdg      string
+		gruntDir string
+		expected string
+	}{
+		{
+			name:     "GRUNT_EMOTE_DIR override",
+			gruntDir: "/custom/emotes",
+			expected: "/custom/emotes",
+		},
+		{
+			name:   "XDG_DATA_HOME set",
+			xdg:    "/tmp/xdg",
+			home:   "/tmp/home",
+			expected: "/tmp/xdg/grunt/emotes",
+		},
+		{
+			name:   "HOME fallback",
+			home:   "/tmp/home",
+			expected: "/tmp/home/.local/share/grunt/emotes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Setenv("GRUNT_EMOTE_DIR", tt.gruntDir)
+			os.Setenv("XDG_DATA_HOME", tt.xdg)
+			os.Setenv("HOME", tt.home)
+
+			got := resolveEmotePath()
+			if got != tt.expected {
+				t.Errorf("resolveEmotePath() = %q, want %q", got, tt.expected)
+			}
+		})
 	}
 }

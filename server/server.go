@@ -96,6 +96,11 @@ func (s *Server) setupRoutes() {
 
 	// Serve static files
 	s.mux.HandleFunc("/static/", HandleStatic)
+
+	// Serve runtime emotes from disk
+	if emoteWatcher != nil {
+		s.mux.HandleFunc("/emotes/", HandleRuntimeEmotes)
+	}
 }
 
 func (s *Server) Serve() error {
@@ -114,6 +119,9 @@ func (s *Server) Serve() error {
 		}
 
 		s.store.Close()
+		if emoteWatcher != nil {
+			emoteWatcher.Close()
+		}
 	}()
 
 	slog.Info("Starting grunt server", "addr", s.httpSrv.Addr)

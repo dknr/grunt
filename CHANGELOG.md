@@ -1,6 +1,18 @@
 # Changelog
 
-## v0.5.3 — Google Fonts Emoji & Documentation
+## v0.5.5 — Runtime Emote File Watcher
+
+### Features
+- Runtime emote file watcher using `fsnotify` for live reload of image emotes
+- Emote directory resolved via `$GRUNT_EMOTE_DIR` > `$XDG_DATA_HOME/grunt/emotes` > `$HOME/.local/share/grunt/emotes`
+- Serve runtime emotes at `/emotes/<filename>` from disk (`.svg`, `.png`, `.gif`, `.webp`)
+- Thread-safe `emoteMap` with `sync.RWMutex` for concurrent `ReplaceEmotes` calls
+- Startup log shows resolved path and emote count; file add/remove events are logged
+
+### Cleanup
+- Removed embedded `server/static/emotes/` directory — all emotes now loaded from disk at runtime
+
+## v0.5.4 — Server-Side Emote Rendering
 
 ### Features
 - Integrated Google Fonts CDN for Noto Color Emoji rendering
