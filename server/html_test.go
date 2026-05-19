@@ -58,6 +58,7 @@ func TestChatTemplate_RenderWithMessages(t *testing.T) {
 			ID:            1,
 			User:          "alice",
 			Content:       "hello",
+			RenderedContent: "hello",
 			Timestamp:     "14:30",
 			Color:         "#3b82f6",
 			ShowAvatar:    true,

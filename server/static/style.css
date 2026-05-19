@@ -310,6 +310,14 @@ button:active {
     flex-shrink: 0;
 }
 
+/* Emote styling */
+.emote {
+    height: 1.2em;
+    width: auto;
+    vertical-align: middle;
+    display: inline-block;
+}
+
 .message-row {
     display: flex;
     align-items: flex-start;

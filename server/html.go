@@ -35,6 +35,7 @@ type MessageTemplateData struct {
 	ID            int
 	User          string
 	Content       string
+	RenderedContent template.HTML
 	Timestamp     string
 	Color         string
 	TextColor     string
@@ -137,6 +138,7 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 				ID:            int(m.ID),
 				User:          m.UserID,
 				Content:       m.Content,
+				RenderedContent: ReplaceEmotes(m.Content),
 				Timestamp:     m.Timestamp.Format("15:04"),
 				Color:         avatarColor(m.UserID),
 				TextColor:     avatarTextColor(m.UserID),
@@ -194,6 +196,7 @@ func renderMessageHTMLTemplate(m client.Broadcast, showAvatar, showUsername, sho
 		ID:            int(m.ID),
 		User:          m.UserID,
 		Content:       m.Content,
+		RenderedContent: ReplaceEmotes(m.Content),
 		Timestamp:     m.Timestamp.Format("15:04"),
 		Color:         avatarColor(m.UserID),
 		TextColor:     avatarTextColor(m.UserID),
@@ -419,6 +422,8 @@ func HandleStatic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 	case strings.HasSuffix(filePath, ".woff2"):
 		w.Header().Set("Content-Type", "font/woff2")
+	case strings.HasSuffix(filePath, ".svg"):
+		w.Header().Set("Content-Type", "image/svg+xml")
 	default:
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
