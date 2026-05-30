@@ -40,10 +40,10 @@ func TestCreateUser(t *testing.T) {
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	// Try to create the same user again (should not error due to OR IGNORE)
+	// Try to create the same user again — should fail with constraint violation
 	err = store.CreateUser("testuser", "password456")
-	if err != nil {
-		t.Fatalf("Failed to create duplicate user: %v", err)
+	if err == nil {
+		t.Error("Expected error when creating duplicate user, got nil")
 	}
 }
 
