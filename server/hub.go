@@ -54,6 +54,10 @@ type Hub struct {
 	register     chan *Subscriber
 	unregister   chan *Subscriber
 
+	// Stop signals the Run loop to exit
+	stop    chan struct{}
+	stopOnce sync.Once
+
 	// Last rendered message for consecutive-display logic
 	lastMsgUser   string
 	lastMsgTime   time.Time
@@ -79,11 +83,19 @@ func NewHub(store *storage.Store) *Hub {
 		broadcast:    make(chan []byte, 256),
 		register:     make(chan *Subscriber),
 		unregister:   make(chan *Subscriber),
+		stop:         make(chan struct{}),
 	}
 }
 
 func (h *Hub) BroadcastMessage(data []byte) {
 	h.broadcast <- data
+}
+
+// Stop signals the Run loop to exit. Safe to call multiple times.
+func (h *Hub) Stop() {
+	h.stopOnce.Do(func() {
+		close(h.stop)
+	})
 }
 
 func (h *Hub) Run() {
@@ -107,6 +119,10 @@ func (h *Hub) Run() {
 				h.broadcastEvent("leave", sub.clientID, sub.userID)
 			}
 			h.mu.Unlock()
+
+		case <-h.stop:
+			slog.Info("Hub Run loop stopping")
+			return
 
 		case msg := <-h.broadcast:
 			h.mu.RLock()

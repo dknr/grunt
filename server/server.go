@@ -118,6 +118,7 @@ func (s *Server) Serve() error {
 			slog.Error("Server forced to shutdown", "error", err)
 		}
 
+		s.hub.Stop()
 		s.store.Close()
 		if emoteWatcher != nil {
 			emoteWatcher.Close()

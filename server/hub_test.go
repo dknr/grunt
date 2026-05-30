@@ -18,9 +18,7 @@ func newTestHub(t *testing.T) *Hub {
 	hub := NewHub(store)
 	go hub.Run()
 	t.Cleanup(func() {
-		// Stop the hub by closing the register channel if needed, 
-		// but for now we just let it run or rely on test timeout.
-		// A better way is to add a Stop method, but for now we skip graceful shutdown in tests.
+		hub.Stop()
 	})
 	return hub
 }
