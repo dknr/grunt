@@ -20,11 +20,13 @@ const (
 // ExtractToken checks for a token in the Authorization header, Cookie, or Query parameter.
 // It returns the token string or an empty string if not found.
 func ExtractToken(r *http.Request) string {
-	// 1. Authorization Header
+	// 1. Authorization Header (Bearer token)
 	authHeader := r.Header.Get("Authorization")
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	if token != "" {
-		return token
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token != "" {
+			return token
+		}
 	}
 
 	// 2. Cookie
@@ -50,8 +52,10 @@ func ValidateToken(token string, store *storage.Store) (string, bool) {
 	}
 
 	// Session token validation (existing logic from hub.go)
-	tokenStore.mu.RLock()
-	defer tokenStore.mu.RUnlock()
+	// Note: we use a write lock here because expired tokens must be safely deleted
+	// from the map. A read lock would race with concurrent deletions.
+	tokenStore.mu.Lock()
+	defer tokenStore.mu.Unlock()
 	entry, ok := tokenStore.tokens[token]
 	if !ok {
 		return "", false
