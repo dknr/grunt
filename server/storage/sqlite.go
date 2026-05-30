@@ -76,6 +76,7 @@ func New(dsn string) (*Store, error) {
 			code TEXT UNIQUE NOT NULL,
 			expires_at DATETIME NOT NULL,
 			created_by_user TEXT,
+			used_by_user TEXT,
 			used_at DATETIME
 		)
 	`)
@@ -208,11 +209,18 @@ func (s *Store) ValidateInvite(code string) (bool, error) {
 }
 
 func (s *Store) MarkInviteUsed(code string, userId string) error {
-	_, err := s.db.Exec(
-		"UPDATE invites SET used_at = ?, created_by_user = ? WHERE code = ? AND used_at IS NULL",
+	result, err := s.db.Exec(
+		"UPDATE invites SET used_at = ?, used_by_user = ? WHERE code = ? AND used_at IS NULL",
 		time.Now().Format(time.RFC3339), userId, code,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("invite code %q not found or already used", code)
+	}
+	return nil
 }
 
 func (s *Store) Save(msg *client.Broadcast) (int64, error) {
