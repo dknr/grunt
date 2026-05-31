@@ -239,7 +239,7 @@ func (s *Store) Sync(since int, limit int) ([]client.Broadcast, error) {
 	var args []interface{}
 
 	if limit > 0 {
-		query = "SELECT id, content, client_id, user, timestamp FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?"
+		query = "SELECT id, content, client_id, user, timestamp FROM (SELECT id, content, client_id, user, timestamp FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC"
 		args = []interface{}{since, limit}
 	} else {
 		query = "SELECT id, content, client_id, user, timestamp FROM messages WHERE id > ? ORDER BY id ASC"
@@ -261,12 +261,6 @@ func (s *Store) Sync(since int, limit int) ([]client.Broadcast, error) {
 		}
 		m.Timestamp, _ = time.Parse(time.RFC3339, ts)
 		msgs = append(msgs, m)
-	}
-
-	if limit > 0 {
-		for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
-			msgs[i], msgs[j] = msgs[j], msgs[i]
-		}
 	}
 
 	return msgs, rows.Err()

@@ -164,7 +164,14 @@ func TestSyncMessages(t *testing.T) {
 		t.Fatalf("Expected 5 messages, got %d", len(messages))
 	}
 
-	// Sync with limit
+	// Verify ascending order (oldest first)
+	for i := 1; i < len(messages); i++ {
+		if messages[i].ID <= messages[i-1].ID {
+			t.Error("Messages should be in ascending ID order")
+		}
+	}
+
+	// Sync with limit (last 3 messages)
 	messages, err = store.Sync(0, 3)
 	if err != nil {
 		t.Fatalf("Failed to sync messages with limit: %v", err)
@@ -172,6 +179,12 @@ func TestSyncMessages(t *testing.T) {
 
 	if len(messages) != 3 {
 		t.Fatalf("Expected 3 messages with limit, got %d", len(messages))
+	}
+
+	// Verify limited results are the last 3 in ascending order
+	if messages[0].ID != 3 || messages[1].ID != 4 || messages[2].ID != 5 {
+		t.Errorf("Expected last 3 messages (IDs 3,4,5) in ascending order, got IDs %d,%d,%d",
+			messages[0].ID, messages[1].ID, messages[2].ID)
 	}
 
 	// Sync after ID 2
@@ -182,6 +195,30 @@ func TestSyncMessages(t *testing.T) {
 
 	if len(messages) != 3 {
 		t.Fatalf("Expected 3 messages after ID 2, got %d", len(messages))
+	}
+
+	// Verify ascending order after ID 2
+	if messages[0].ID != 3 || messages[1].ID != 4 || messages[2].ID != 5 {
+		t.Errorf("Expected messages 3,4,5 in ascending order after ID 2, got IDs %d,%d,%d",
+			messages[0].ID, messages[1].ID, messages[2].ID)
+	}
+
+	// Sync after last message (should return empty)
+	messages, err = store.Sync(5, 0)
+	if err != nil {
+		t.Fatalf("Failed to sync messages after ID 5: %v", err)
+	}
+	if len(messages) != 0 {
+		t.Errorf("Expected 0 messages after ID 5, got %d", len(messages))
+	}
+
+	// Sync with limit when no messages match (since beyond max)
+	messages, err = store.Sync(10, 3)
+	if err != nil {
+		t.Fatalf("Failed to sync messages with limit after high ID: %v", err)
+	}
+	if len(messages) != 0 {
+		t.Errorf("Expected 0 messages with limit after high ID, got %d", len(messages))
 	}
 }
 
