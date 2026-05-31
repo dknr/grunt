@@ -21,6 +21,9 @@ type apiImpl struct {
 	hub   *Hub
 }
 
+// MaxMessageLength is the maximum allowed message content size in bytes.
+const MaxMessageLength = 10240
+
 // requireAdmin is a middleware that checks if the current user is an admin.
 func (a *apiImpl) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -268,6 +271,13 @@ func (a *apiImpl) SyncMessages(w http.ResponseWriter, r *http.Request, params Sy
 func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
 	slog.Info("SendMessage handler called")
 
+	// Early rejection based on Content-Length header
+	if r.ContentLength > MaxMessageLength {
+		slog.Warn("SendMessage rejected: Content-Length exceeds limit", "content_length", r.ContentLength)
+		http.Error(w, `{"error":"content too large"}`, http.StatusRequestEntityTooLarge)
+		return
+	}
+
 	var req SendMessageRequest
 	contentType := r.Header.Get("Content-Type")
 	if strings.Contains(contentType, "json") {
@@ -286,6 +296,11 @@ func (a *apiImpl) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Content == "" {
 		http.Error(w, `{"error":"content is required"}`, http.StatusBadRequest)
+		return
+	}
+	if len(req.Content) > MaxMessageLength {
+		slog.Warn("SendMessage rejected: content exceeds length limit", "length", len(req.Content))
+		http.Error(w, `{"error":"content exceeds maximum length"}`, http.StatusRequestEntityTooLarge)
 		return
 	}
 
