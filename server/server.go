@@ -39,7 +39,7 @@ func NewWithPort(dbPath string, port int) *Server {
 	}
 	if count == 0 {
 		code := generateInviteCode()
-		expiresAt := time.Now().Add(24 * time.Hour)
+		expiresAt := time.Now().Add(10 * time.Minute)
 		if err := store.CreateInvite(code, expiresAt, ""); err != nil {
 			slog.Error("Failed to create initial invite", "error", err)
 			os.Exit(1)
