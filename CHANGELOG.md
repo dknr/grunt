@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.5.6 — Auth Fixes, Hub Lifecycle, & Message Limits
+
+### Fixes
+- Eliminated TokenStore data race: expired session tokens are now deleted under a write lock instead of a read lock
+- Fixed ExtractToken: non-Bearer Authorization header values are no longer mistakenly accepted as tokens
+- Added `used_by_user` column to invites table, preserving the original `created_by_user` audit trail (previously overwritten by the registering user)
+- Added defensive error when `MarkInviteUsed` affects zero rows, catching double-use or nonexistent invite codes early
+- Added `Hub.Stop()` method for graceful goroutine termination, wired into server shutdown
+- Aligned cold-start invite code expiry from 24h to 10m to match admin-generated codes
+
+### Features
+- Added 10KB message content length limit with early Content-Length header rejection (413 Payload Too Large) and post-parse content check
+
+### Refactoring
+- Unified `Sync` query ordering: subquery with `ORDER BY DESC LIMIT` wrapped in outer `ORDER BY ASC`, removing fragile manual slice reversal
+
+### Tests
+- Added 21 auth unit tests covering ExtractToken, ValidateToken (session, API key, expiry, concurrency), and context helpers
+- Added 8 invite unit tests covering create, validate, expiry, single-use, double-use rejection, audit trail preservation, and multi-invite independence
+- Fixed `TestCreateUser` to expect duplicate insert error instead of silently succeeding
+- Strengthened `TestSyncMessages` with ascending sort order verification and edge cases
+
 ## v0.5.5 — Emote System & Runtime File Watcher
 
 ### Features
