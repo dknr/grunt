@@ -606,7 +606,7 @@ func renderKeyTableHTML(sb *strings.Builder, keys []storage.APIKeyInfoFull) {
 		sb.WriteString(fmt.Sprintf(`<td>%s</td>`, html.EscapeString(k.UserID)))
 		sb.WriteString(fmt.Sprintf(`<td>%s</td>`, nameStr))
 		sb.WriteString(fmt.Sprintf(`<td>%s</td>`, ts))
-		sb.WriteString(fmt.Sprintf(`<td><button type="button" hx-delete="/api/admin/api-keys/%d" hx-target="#api-keys-table-container" hx-swap="innerHTML" hx-headers='{"Accept": "text/html"}' onclick="if(!confirm('Revoke this key?'))event.preventDefault()">Revoke</button></td>`, k.ID))
+		sb.WriteString(fmt.Sprintf(`<td><button type="button" hx-delete="/api/admin/api-keys/%d" hx-target="#keys-table-container" hx-swap="innerHTML" hx-headers='{"Accept": "text/html"}' onclick="if(!confirm('Revoke this key?'))event.preventDefault()">Revoke</button></td>`, k.ID))
 		sb.WriteString(`</tr>`)
 	}
 	sb.WriteString(`</tbody></table>`)

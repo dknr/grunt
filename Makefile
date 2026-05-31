@@ -49,6 +49,12 @@ test-short:
 	go test -v ./...
 	cd cmd && go test -v ./...
 
+test-e2e:
+	cd e2e && npx playwright install chromium && npx playwright test
+
+test-e2e-headed:
+	cd e2e && npx playwright test --headed
+
 version:
 	@echo "Version: $(FULL_VERSION)$(DIRTY)"
 	@echo "Commit:  $(COMMIT)"

@@ -1,25 +1,25 @@
+
 # Binaries
+dist/
+*.dll
+.DS_Store
+*.dylib
+e2e/node_modules/
+e2e/package-lock.json
+e2e/test-results/
 *.exe
 *.exe~
-*.dll
-*.so
-*.dylib
-dist/
-
-# Logs
-*.log
-server.json.log
-
 # IDE
 .idea/
-.vscode/
-*.swp
-*.swo
-
+*.log
+# Logs
 # OS
-.DS_Store
-Thumbs.db
-server/openapi.gen.go
-
-# Test environment secrets
 scripts/test-env-llm.yaml
+server.json.log
+server/openapi.gen.go
+*.so
+*.swo
+*.swp
+# Test environment secrets
+Thumbs.db
+.vscode/
