@@ -61,33 +61,26 @@ func (a *apiImpl) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate invite code (required for all registrations)
-	valid, err := a.store.ValidateInvite(req.InviteCode)
+	created, err := a.store.RegisterWithInvite(req.InviteCode, req.User, req.Password)
 	if err != nil {
-		slog.Error("Error validating invite", "error", err)
-		http.Error(w, `{"error":"failed to validate invite code"}`, http.StatusInternalServerError)
+		// Check if it's a duplicate user error
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			slog.Warn("User already registered", "user", req.User)
+			w.WriteHeader(http.StatusConflict)
+			msg := MessageResponse{
+				Message: strPtr("user already exists"),
+			}
+			json.NewEncoder(w).Encode(msg)
+			return
+		}
+		slog.Warn("Registration failed", "user", req.User, "error", err)
+		http.Error(w, `{"error":"`+html.EscapeString(err.Error())+`"}`, http.StatusUnauthorized)
 		return
 	}
-	if !valid {
+	if !created {
 		slog.Warn("Registration attempt with invalid invite", "user", req.User)
 		http.Error(w, `{"error":"invalid or expired invite code"}`, http.StatusUnauthorized)
 		return
-	}
-
-	if err := a.store.CreateUser(req.User, req.Password); err != nil {
-		// Check if user already exists (409 Conflict)
-		slog.Warn("User already registered", "user", req.User)
-		w.WriteHeader(http.StatusConflict)
-		msg := MessageResponse{
-			Message: strPtr("user already exists"),
-		}
-		json.NewEncoder(w).Encode(msg)
-		return
-	}
-
-	// Mark invite as used
-	if err := a.store.MarkInviteUsed(req.InviteCode, req.User); err != nil {
-		slog.Error("Error marking invite as used", "error", err)
-		// Don't fail registration if invite marking fails
 	}
 
 	// Set first user as admin

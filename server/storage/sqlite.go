@@ -104,6 +104,69 @@ func (s *Store) CreateUser(user, password string) error {
 	return err
 }
 
+func (s *Store) RegisterWithInvite(code, user, password string) (bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Validate invite within the transaction: check existence, unused, and expiry
+	var expiresAt string
+	err = tx.QueryRow(
+		"SELECT expires_at FROM invites WHERE code = ? AND used_at IS NULL",
+		code,
+	).Scan(&expiresAt)
+	if err == sql.ErrNoRows {
+		return false, fmt.Errorf("invalid or expired invite code")
+	}
+	if err != nil {
+		return false, fmt.Errorf("query invite: %w", err)
+	}
+
+	expTime, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		return false, fmt.Errorf("parse expiry: %w", err)
+	}
+	if !time.Now().Before(expTime) {
+		return false, fmt.Errorf("invite code expired")
+	}
+
+	// Mark invite as used
+	_, err = tx.Exec(
+		"UPDATE invites SET used_at = ?, used_by_user = ? WHERE code = ? AND used_at IS NULL",
+		time.Now().Format(time.RFC3339), user, code,
+	)
+	if err != nil {
+		return false, fmt.Errorf("mark invite used: %w", err)
+	}
+
+	// Hash password and create user
+	var hash *string
+	if password != "" {
+		h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return false, fmt.Errorf("hash password: %w", err)
+		}
+		str := string(h)
+		hash = &str
+	}
+
+	_, err = tx.Exec(
+		"INSERT INTO users (user, password_hash) VALUES (?, ?)",
+		user, hash,
+	)
+	if err != nil {
+		return false, fmt.Errorf("create user: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return true, nil
+}
+
 func (s *Store) CreateUserNoPassword(user string) error {
 	_, err := s.db.Exec(
 		"INSERT INTO users (user, password_hash) VALUES (?, NULL)",
