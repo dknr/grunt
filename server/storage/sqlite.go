@@ -34,9 +34,11 @@ func New(dsn string) (*Store, error) {
 		CREATE TABLE IF NOT EXISTS users (
 			user TEXT PRIMARY KEY,
 			password_hash TEXT DEFAULT NULL,
-			is_admin BOOLEAN DEFAULT 0
+			is_admin BOOLEAN DEFAULT 0,
+			avatar BLOB DEFAULT NULL
 		)
 	`)
+
 	if err != nil {
 		return nil, fmt.Errorf("create users table: %w", err)
 	}
@@ -231,6 +233,32 @@ func (s *Store) ChangePassword(userID, currentPassword, newPassword string) erro
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+func (s *Store) SetAvatar(userID string, data []byte) error {
+	_, err := s.db.Exec("UPDATE users SET avatar = ? WHERE user = ?", data, userID)
+	return err
+}
+
+func (s *Store) GetAvatar(userID string) ([]byte, error) {
+	var avatar []byte
+	err := s.db.QueryRow("SELECT avatar FROM users WHERE user = ?", userID).Scan(&avatar)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("user not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return avatar, nil
+}
+
+func (s *Store) HasAvatar(userID string) bool {
+	if s == nil {
+		return false
+	}
+	var avatar []byte
+	err := s.db.QueryRow("SELECT avatar FROM users WHERE user = ?", userID).Scan(&avatar)
+	return err == nil && len(avatar) > 0
 }
 
 func (s *Store) CreateUserCount() (int, error) {

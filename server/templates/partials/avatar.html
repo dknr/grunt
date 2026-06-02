@@ -1,4 +1,4 @@
-{{define "avatar"}}<a href="{{.URL}}"><div class="avatar">{{template "avatar_svg" .}}</div></a>{{end}}
+{{define "avatar"}}<a href="{{.URL}}"><div class="avatar">{{if .HasAvatar}}<img src="/api/user/avatar/{{.UserID}}" width="32" height="32" alt="">{{else}}{{template "avatar_svg" .}}{{end}}</div></a>{{end}}
 
 {{define "avatar_svg"}}<svg width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15.5" fill="{{.Color}}" /><text x="16" y="16" text-anchor="middle" dominant-baseline="central" fill="{{.TextColor}}" font-size="18" font-weight="bold" font-family="system-ui, sans-serif">{{.Initial}}</text></svg>{{end}}
 

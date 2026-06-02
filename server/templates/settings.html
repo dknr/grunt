@@ -22,6 +22,22 @@
             <button type="submit">Logout</button>
         </form>
 
+        <!-- Profile Picture Section -->
+        <div class="section">
+            <h2>Profile Picture</h2>
+            <p>Upload a 64×64 profile picture. PNG, JPEG, and GIF supported. Non-square images are center-cropped.</p>
+            <form method="post" enctype="multipart/form-data" action="/api/user/avatar"
+                  hx-post="/api/user/avatar"
+                  hx-target="#avatar-result"
+                  hx-swap="innerHTML"
+                  hx-encoding="multipart/form-data"
+                  style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; align-items: center;">
+                <input name="avatar" type="file" accept="image/png,image/jpeg,image/gif" required style="flex: 1;">
+                <button type="submit">Upload</button>
+            </form>
+            <div id="avatar-result"></div>
+        </div>
+
         <!-- User Actions Section -->
         <div class="section">
             <h2>Change Password</h2>

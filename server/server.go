@@ -22,6 +22,7 @@ type Server struct {
 	store    *storage.Store
 	mux      *http.ServeMux
 	httpSrv  *http.Server
+	apiImpl  *apiImpl
 }
 
 func NewWithPort(dbPath string, port int) *Server {
@@ -64,6 +65,7 @@ func NewWithPort(dbPath string, port int) *Server {
 		hub:   hub,
 		store: store,
 		mux:   mux,
+		apiImpl: apiImpl,
 	}
 
 	s.setupRoutes()
@@ -104,6 +106,17 @@ func (s *Server) setupRoutes() {
 	if emoteWatcher != nil {
 		s.mux.HandleFunc("/emotes/", HandleRuntimeEmotes)
 	}
+
+	// Avatar routes
+	s.mux.HandleFunc("POST /api/user/avatar", func(w http.ResponseWriter, r *http.Request) {
+		s.apiImpl.handleAvatarUpload(w, r)
+	})
+	s.mux.HandleFunc("GET /api/user/avatar", func(w http.ResponseWriter, r *http.Request) {
+		s.apiImpl.handleAvatarGet(w, r)
+	})
+	s.mux.HandleFunc("GET /api/user/avatar/", func(w http.ResponseWriter, r *http.Request) {
+		s.apiImpl.handleAvatarGetUser(w, r)
+	})
 }
 
 func (s *Server) Serve() error {

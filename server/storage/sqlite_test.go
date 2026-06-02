@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -237,5 +238,136 @@ func TestClose(t *testing.T) {
 	err = store.db.Ping()
 	if err == nil {
 		t.Error("Expected error when pinging closed database")
+	}
+}
+
+func TestSetAndGetAvatar(t *testing.T) {
+	store := newTestStore(t)
+
+	err := store.CreateUser("testuser", "password")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	avatarData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x08, 0xD7, 0x63, 0x60, 0x60, 0x60, 0x00, 0x00, 0x00, 0x05, 0x00, 0x01, 0x12, 0x2E, 0x36, 0x5A, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82}
+
+	if err := store.SetAvatar("testuser", avatarData); err != nil {
+		t.Fatalf("Failed to set avatar: %v", err)
+	}
+
+	got, err := store.GetAvatar("testuser")
+	if err != nil {
+		t.Fatalf("Failed to get avatar: %v", err)
+	}
+	if !bytes.Equal(got, avatarData) {
+		t.Error("avatar data mismatch: got different bytes than set")
+	}
+}
+
+func TestGetAvatar_NonexistentUser(t *testing.T) {
+	store := newTestStore(t)
+
+	_, err := store.GetAvatar("nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent user, got nil")
+	}
+}
+
+func TestGetAvatar_NoAvatar(t *testing.T) {
+	store := newTestStore(t)
+
+	err := store.CreateUser("nopicture", "password")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	avatar, err := store.GetAvatar("nopicture")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(avatar) != 0 {
+		t.Error("expected empty avatar for user without avatar")
+	}
+}
+
+func TestHasAvatar(t *testing.T) {
+	store := newTestStore(t)
+
+	err := store.CreateUser("withpic", "password")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+	err = store.CreateUser("withoutpic", "password2")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	if store.HasAvatar("withpic") {
+		t.Error("expected HasAvatar false before setting")
+	}
+
+	avatarData := []byte("fake-png-data")
+	if err := store.SetAvatar("withpic", avatarData); err != nil {
+		t.Fatalf("Failed to set avatar: %v", err)
+	}
+
+	if !store.HasAvatar("withpic") {
+		t.Error("expected HasAvatar true after setting")
+	}
+	if store.HasAvatar("withoutpic") {
+		t.Error("expected HasAvatar false for user without avatar")
+	}
+	if store.HasAvatar("nonexistent") {
+		t.Error("expected HasAvatar false for nonexistent user")
+	}
+}
+
+func TestHasAvatar_NilStore(t *testing.T) {
+	var s *Store
+	if s.HasAvatar("any") {
+		t.Error("nil store should return false for HasAvatar")
+	}
+}
+
+func TestSetAvatar_NonexistentUser(t *testing.T) {
+	store := newTestStore(t)
+
+	// UPDATE on nonexistent user doesn't error in SQLite — it just affects 0 rows.
+	// Verify the avatar was NOT stored by checking GetAvatar returns empty.
+	err := store.SetAvatar("ghost", []byte("data"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got, err := store.GetAvatar("ghost")
+	if err == nil && len(got) > 0 {
+		t.Error("expected no avatar stored for nonexistent user")
+	}
+}
+
+func TestUpdateAvatar(t *testing.T) {
+	store := newTestStore(t)
+
+	err := store.CreateUser("updatepic", "password")
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	first := []byte("first-avatar")
+	second := []byte("second-avatar")
+
+	if err := store.SetAvatar("updatepic", first); err != nil {
+		t.Fatalf("Failed to set first avatar: %v", err)
+	}
+	if err := store.SetAvatar("updatepic", second); err != nil {
+		t.Fatalf("Failed to set second avatar: %v", err)
+	}
+
+	got, err := store.GetAvatar("updatepic")
+	if err != nil {
+		t.Fatalf("Failed to get avatar: %v", err)
+	}
+	if !bytes.Equal(got, second) {
+		t.Error("avatar was not updated: got old data")
 	}
 }

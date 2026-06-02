@@ -24,6 +24,7 @@ type AvatarData struct {
 	Color     string
 	TextColor string
 	Initial   string
+	HasAvatar bool
 }
 
 type ChatData struct {
@@ -32,17 +33,18 @@ type ChatData struct {
 }
 
 type MessageTemplateData struct {
-	ID            int
-	User          string
-	Content       string
+	ID              int
+	User            string
+	Content         string
 	RenderedContent template.HTML
-	Timestamp     string
-	Color         string
-	TextColor     string
-	Initial       string
-	ShowAvatar    bool
-	ShowUsername  bool
-	ShowTimestamp bool
+	Timestamp       string
+	Color           string
+	TextColor       string
+	Initial         string
+	HasAvatar       bool
+	ShowAvatar      bool
+	ShowUsername    bool
+	ShowTimestamp   bool
 }
 
 // Templates parsed in init()
@@ -114,6 +116,7 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 			Color:     avatarColor(userID),
 			TextColor: avatarTextColor(userID),
 			Initial:   strings.ToUpper(string([]rune(userID)[0])),
+			HasAvatar: DefaultStore.HasAvatar(userID),
 		}
 
 		msgs := make([]MessageTemplateData, len(messages))
@@ -135,17 +138,18 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 			}
 
 			msgs[i] = MessageTemplateData{
-				ID:            int(m.ID),
-				User:          m.UserID,
-				Content:       m.Content,
+				ID:              int(m.ID),
+				User:            m.UserID,
+				Content:         m.Content,
 				RenderedContent: ReplaceEmotes(m.Content),
-				Timestamp:     m.Timestamp.Format("15:04"),
-				Color:         avatarColor(m.UserID),
-				TextColor:     avatarTextColor(m.UserID),
-				Initial:       strings.ToUpper(string([]rune(m.UserID)[0])),
-				ShowAvatar:    showAvatar,
-				ShowUsername:  showUsername,
-				ShowTimestamp: showTimestamp,
+				Timestamp:       m.Timestamp.Format("15:04"),
+				Color:           avatarColor(m.UserID),
+				TextColor:       avatarTextColor(m.UserID),
+				Initial:         strings.ToUpper(string([]rune(m.UserID)[0])),
+				HasAvatar:       DefaultStore.HasAvatar(m.UserID),
+				ShowAvatar:      showAvatar,
+				ShowUsername:    showUsername,
+				ShowTimestamp:   showTimestamp,
 			}
 		}
 
@@ -193,17 +197,18 @@ func avatarTextColor(userID string) string {
 // This is used by the Hub for SSE HTML streaming.
 func renderMessageHTMLTemplate(m client.Broadcast, showAvatar, showUsername, showTimestamp bool) string {
 	msg := MessageTemplateData{
-		ID:            int(m.ID),
-		User:          m.UserID,
-		Content:       m.Content,
+		ID:              int(m.ID),
+		User:            m.UserID,
+		Content:         m.Content,
 		RenderedContent: ReplaceEmotes(m.Content),
-		Timestamp:     m.Timestamp.Format("15:04"),
-		Color:         avatarColor(m.UserID),
-		TextColor:     avatarTextColor(m.UserID),
-		Initial:       strings.ToUpper(string([]rune(m.UserID)[0])),
-		ShowAvatar:    showAvatar,
-		ShowUsername:  showUsername,
-		ShowTimestamp: showTimestamp,
+		Timestamp:       m.Timestamp.Format("15:04"),
+		Color:           avatarColor(m.UserID),
+		TextColor:       avatarTextColor(m.UserID),
+		Initial:         strings.ToUpper(string([]rune(m.UserID)[0])),
+		HasAvatar:       DefaultStore.HasAvatar(m.UserID),
+		ShowAvatar:      showAvatar,
+		ShowUsername:    showUsername,
+		ShowTimestamp:   showTimestamp,
 	}
 
 	var buf bytes.Buffer
@@ -348,6 +353,7 @@ func HandleSettings(w http.ResponseWriter, r *http.Request) {
 		Color:     avatarColor(userID),
 		TextColor: avatarTextColor(userID),
 		Initial:   strings.ToUpper(string([]rune(userID)[0])),
+		HasAvatar: DefaultStore.HasAvatar(userID),
 	}
 
 	var users []storage.UserInfo

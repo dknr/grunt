@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -577,7 +578,100 @@ func (a *apiImpl) AdminRevokeAPIKey(w http.ResponseWriter, r *http.Request, keyI
 	json.NewEncoder(w).Encode(msg)
 }
 
-// isHTMXRequest checks if the request is from HTMX.
+// handleAvatarUpload processes multipart avatar image upload.
+// Accepts a single file in the "avatar" form field.
+// Max file size: 2MB.
+func (a *apiImpl) handleAvatarUpload(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r)
+	if userID == "" {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	// Parse multipart form with max 2MB
+	const maxUpload = 2 << 20 // 2 MB
+	if err := r.ParseMultipartForm(maxUpload); err != nil {
+		slog.Warn("Avatar upload: multipart parse error", "error", err)
+		http.Error(w, `{"error":"invalid upload — max 2MB"}`, http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("avatar")
+	if err != nil {
+		slog.Warn("Avatar upload: no file in 'avatar' field", "error", err)
+		http.Error(w, `{"error":"no avatar file provided"}`, http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	pngBytes, err := processAvatar(file, maxUpload)
+	if err != nil {
+		slog.Warn("Avatar upload: processing failed", "error", err)
+		http.Error(w, `{"error":"`+html.EscapeString(err.Error())+`"}`, http.StatusBadRequest)
+		return
+	}
+
+	if err := a.store.SetAvatar(userID, pngBytes); err != nil {
+		slog.Error("Avatar upload: store failed", "error", err)
+		http.Error(w, `{"error":"failed to save avatar"}`, http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("Avatar uploaded", "user", userID, "size", len(pngBytes))
+
+	if isHTMXRequest(r) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(`<p class="success">Profile picture updated.</p>`))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// handleAvatarGet serves the current user's avatar as image/png.
+func (a *apiImpl) handleAvatarGet(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r)
+	if userID == "" {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	a.serveAvatar(w, r, userID)
+}
+
+// handleAvatarGetUser serves any user's avatar by userID from the URL path.
+func (a *apiImpl) handleAvatarGetUser(w http.ResponseWriter, r *http.Request) {
+	// Extract userID from path: /api/user/avatar/{userID}
+	userID := strings.TrimPrefix(r.URL.Path, "/api/user/avatar/")
+	if userID == "" {
+		http.Error(w, `{"error":"user ID required"}`, http.StatusBadRequest)
+		return
+	}
+	a.serveAvatar(w, r, userID)
+}
+
+func (a *apiImpl) serveAvatar(w http.ResponseWriter, r *http.Request, userID string) {
+	avatar, err := a.store.GetAvatar(userID)
+	if err != nil || len(avatar) == 0 {
+		http.Error(w, `{"error":"no avatar"}`, http.StatusNotFound)
+		return
+	}
+
+	// ETag based on SHA-256 of the avatar bytes
+	sum := sha256.Sum256(avatar)
+	etag := `"sha256-` + hex.EncodeToString(sum[:]) + `"`
+
+	// Check If-None-Match for cache revalidation
+	if match := r.Header.Get("If-None-Match"); match == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("ETag", etag)
+	w.Write(avatar)
+}
 func isHTMXRequest(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
