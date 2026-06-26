@@ -668,7 +668,7 @@ func (a *apiImpl) serveAvatar(w http.ResponseWriter, r *http.Request, userID str
 	}
 
 	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	w.Header().Set("ETag", etag)
 	w.Write(avatar)
 }
