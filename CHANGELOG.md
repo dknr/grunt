@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.5.7 — Profile Pictures, E2E Tests, Date Dividers & Template Formatting
+
+### Features
+- Profile picture upload with image processing, ETag caching, and tests (avatar_test.go)
+- Playwright E2E test suite covering auth, chat, settings, SSE streaming, and mobile viewport (33 tests)
+- Sticky date dividers ("Today", "Yesterday", "Monday, January 2") between messages in the chat stream
+- Invite code registration made atomic via single SQL transaction with concurrent race-condition protection
+
+### Fixes
+- Fixed profile picture cache control headers for proper browser caching
+- Reformatted SSE message template across multiple lines: user content newlines converted to `<br>` before rendering, multi-line HTML sent as separate SSE `data:` fields per spec
+
+### Tests
+- 6 Playwright E2E test files (auth, avatar, chat, mobile, settings, SSE)
+- Avatar processing tests (PNG, JPEG, square, wide, too-large, invalid format, empty input)
+- Invite transaction atomicity tests with concurrent race conditions (10 goroutines)
+
+### Refactoring
+- Unified `Sync` query ordering: subquery with `ORDER BY DESC LIMIT` wrapped in outer `ORDER BY ASC`, removing fragile manual slice reversal
+
 ## v0.5.6 — Auth Fixes, Hub Lifecycle, & Message Limits
 
 ### Fixes
