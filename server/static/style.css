@@ -326,6 +326,33 @@ button:active {
     margin-top: 8px;
 }
 
+/* === Date Dividers === */
+.date-divider {
+    display: flex;
+    align-items: center;
+    margin-top: 32px;
+    margin-bottom: 8px;
+    padding-left: 24px;
+    position: sticky;
+    top: 0;
+    background-color: var(--bg-primary);
+    z-index: 1;
+}
+
+.divider-line {
+    flex: 1;
+    height: 1px;
+    background-color: var(--border);
+}
+
+.divider-label {
+    padding: 0 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    font-weight: 500;
+}
+
 .message-row.message-row--grouped {
     margin-top: 4px;
 }

@@ -61,6 +61,7 @@ type Hub struct {
 	// Last rendered message for consecutive-display logic
 	lastMsgUser   string
 	lastMsgTime   time.Time
+	lastMsgDate   time.Time // server-local date for day separators
 	lastMsgMu     sync.RWMutex
 }
 
@@ -163,10 +164,13 @@ func (h *Hub) Run() {
 					if err := json.Unmarshal(msg, &broadcastMsg); err != nil {
 						slog.Error("Error unmarshaling message for HTML rendering", "error", err)
 					} else {
+						currentDate := time.Date(broadcastMsg.Timestamp.Year(), broadcastMsg.Timestamp.Month(), broadcastMsg.Timestamp.Day(), 0, 0, 0, 0, time.Local)
+
 						h.lastMsgMu.RLock()
 						showAvatar := true
 						showUsername := true
 						showTimestamp := true
+						dateHeader := ""
 						if h.lastMsgUser == broadcastMsg.UserID {
 							showAvatar = false
 							showUsername = false
@@ -174,13 +178,17 @@ func (h *Hub) Run() {
 								showTimestamp = false
 							}
 						}
+						if !h.lastMsgDate.Equal(currentDate) {
+							dateHeader = formatDateHeader(broadcastMsg.Timestamp)
+						}
 						h.lastMsgMu.RUnlock()
 
-						htmlFragment = renderMessageHTMLTemplate(broadcastMsg, showAvatar, showUsername, showTimestamp)
+						htmlFragment = renderMessageHTMLTemplate(broadcastMsg, showAvatar, showUsername, showTimestamp, dateHeader)
 
 						h.lastMsgMu.Lock()
 						h.lastMsgUser = broadcastMsg.UserID
 						h.lastMsgTime = broadcastMsg.Timestamp
+						h.lastMsgDate = currentDate
 						h.lastMsgMu.Unlock()
 
 						slog.Debug("Rendered HTML fragment", "len", len(htmlFragment), "user", broadcastMsg.UserID, "id", broadcastMsg.ID)

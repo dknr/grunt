@@ -230,7 +230,7 @@ func TestRenderMessageHTMLTemplate(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	result := renderMessageHTMLTemplate(bcast, true, true, true)
+	result := renderMessageHTMLTemplate(bcast, true, true, true, "")
 	if !strings.Contains(result, "test message") {
 		t.Error("missing content in rendered message")
 	}
@@ -250,7 +250,7 @@ func TestRenderMessageHTMLTemplate_EscapesContent(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	result := renderMessageHTMLTemplate(bcast, true, true, true)
+	result := renderMessageHTMLTemplate(bcast, true, true, true, "")
 	if strings.Contains(result, "<script>") {
 		t.Error("raw <script> should be escaped in output")
 	}
@@ -273,7 +273,7 @@ func TestRenderMessageHTMLTemplate_MultilineContent(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-result := renderMessageHTMLTemplate(bcast, true, true, true)
+result := renderMessageHTMLTemplate(bcast, true, true, true, "")
 	if !strings.Contains(result, "line one") {
 		t.Error("missing first line in rendered message")
 	}

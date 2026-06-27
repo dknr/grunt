@@ -1,4 +1,4 @@
-{{define "message"}}<div class="message-row{{if not .ShowAvatar}} message-row--grouped{{end}}">
+{{define "message"}}{{if .DateHeader}}{{template "date-divider" .}}{{end}}<div class="message-row{{if not .ShowAvatar}} message-row--grouped{{end}}">
   <div class="avatar-col">
     {{if .ShowAvatar}}<div class="avatar">
       {{if .HasAvatar}}<img src="/api/user/avatar/{{.User}}" width="32" height="32" alt="">

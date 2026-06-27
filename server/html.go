@@ -45,6 +45,7 @@ type MessageTemplateData struct {
 	ShowAvatar      bool
 	ShowUsername    bool
 	ShowTimestamp   bool
+	DateHeader      string // empty if no date divider needed
 }
 
 // Templates parsed in init()
@@ -68,6 +69,7 @@ func init() {
 	// All other templates share a single namespace so they can reference each other
 	allTemplates := []string{
 		"templates/partials/avatar.html",
+		"templates/partials/date-divider.html",
 		"templates/partials/message.html",
 		"templates/chat.html",
 		"templates/settings.html",
@@ -84,7 +86,7 @@ func init() {
 	messageTmpl = combined.Lookup("message.html")
 }
 
-//go:embed templates/login.html templates/chat.html templates/settings.html templates/partials/avatar.html templates/partials/message.html templates/partials/version.html
+//go:embed templates/login.html templates/chat.html templates/settings.html templates/partials/avatar.html templates/partials/date-divider.html templates/partials/message.html templates/partials/version.html
 var templateFS embed.FS
 
 //go:embed static
@@ -120,6 +122,7 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 		}
 
 		msgs := make([]MessageTemplateData, len(messages))
+		var lastMsgDate time.Time
 		for i, m := range messages {
 			showAvatar := true
 			showUsername := true
@@ -137,6 +140,13 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			currentDate := time.Date(m.Timestamp.Year(), m.Timestamp.Month(), m.Timestamp.Day(), 0, 0, 0, 0, time.Local)
+			var dateHeader string
+			if i == 0 || !currentDate.Equal(lastMsgDate) {
+				dateHeader = formatDateHeader(currentDate)
+			}
+			lastMsgDate = currentDate
+
 			msgs[i] = MessageTemplateData{
 				ID:              int(m.ID),
 				User:            m.UserID,
@@ -150,6 +160,7 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 				ShowAvatar:      showAvatar,
 				ShowUsername:    showUsername,
 				ShowTimestamp:   showTimestamp,
+				DateHeader:      dateHeader,
 			}
 		}
 
@@ -193,9 +204,26 @@ func avatarTextColor(userID string) string {
 	return "#fff"
 }
 
+// formatDateHeader returns a human-readable date label for the given date,
+// formatted in the server's local timezone.
+func formatDateHeader(d time.Time) string {
+	now := time.Now().In(time.Local)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+	yesterday := today.AddDate(0, 0, -1)
+
+	switch {
+	case d.Equal(today):
+		return "Today"
+	case d.Equal(yesterday):
+		return "Yesterday"
+	default:
+		return d.Format("Monday, January 2")
+	}
+}
+
 // renderMessageHTMLTemplate renders a single broadcast message using the message template.
 // This is used by the Hub for SSE HTML streaming.
-func renderMessageHTMLTemplate(m client.Broadcast, showAvatar, showUsername, showTimestamp bool) string {
+func renderMessageHTMLTemplate(m client.Broadcast, showAvatar, showUsername, showTimestamp bool, dateHeader string) string {
 	msg := MessageTemplateData{
 		ID:              int(m.ID),
 		User:            m.UserID,
@@ -212,6 +240,7 @@ func renderMessageHTMLTemplate(m client.Broadcast, showAvatar, showUsername, sho
 		ShowAvatar:      showAvatar,
 		ShowUsername:    showUsername,
 		ShowTimestamp:   showTimestamp,
+		DateHeader:      dateHeader,
 	}
 
 	var buf bytes.Buffer
