@@ -248,13 +248,22 @@ func (s *Subscriber) writePump() {
 
 			if s.renderHTML {
 				// HTML subscribers receive pre-rendered fragments.
-				// Send event line so HTMX SSE extension matches sse-swap="message"
+				// Split on newlines and send each line as a separate data: field
+				// so the template can be formatted across multiple lines.
+				// The SSE parser concatenates data: fields with \n between them,
+				// reconstructing the original multi-line HTML.
 				if _, err := s.writer.Write([]byte("event: message\n")); err != nil {
 					slog.Error("Error writing event line", "error", err, "client_id", s.clientID)
 					return
 				}
-				if _, err := s.writer.Write([]byte("data: " + string(msg) + "\n\n")); err != nil {
-					slog.Error("Error writing data line", "error", err, "client_id", s.clientID)
+				for _, line := range strings.Split(string(msg), "\n") {
+					if _, err := s.writer.Write([]byte("data: " + line + "\n")); err != nil {
+						slog.Error("Error writing data line", "error", err, "client_id", s.clientID)
+						return
+					}
+				}
+				if _, err := s.writer.Write([]byte("\n")); err != nil {
+					slog.Error("Error writing end-of-event", "error", err, "client_id", s.clientID)
 					return
 				}
 				s.flusher.Flush()

@@ -200,7 +200,10 @@ func renderMessageHTMLTemplate(m client.Broadcast, showAvatar, showUsername, sho
 		ID:              int(m.ID),
 		User:            m.UserID,
 		Content:         m.Content,
-		RenderedContent: ReplaceEmotes(m.Content),
+		RenderedContent: func() template.HTML {
+			result := ReplaceEmotes(m.Content)
+			return template.HTML(strings.ReplaceAll(string(result), "\n", "<br>"))
+		}(),
 		Timestamp:       m.Timestamp.Format("15:04"),
 		Color:           avatarColor(m.UserID),
 		TextColor:       avatarTextColor(m.UserID),
@@ -217,10 +220,7 @@ func renderMessageHTMLTemplate(m client.Broadcast, showAvatar, showUsername, sho
 		return `<div class="message-row"><p>Error rendering message</p></div>`
 	}
 
-	// Replace literal newlines with <br> so the rendered fragment doesn't contain
-	// newline characters that would break the SSE protocol.
-	html := buf.String()
-	return strings.ReplaceAll(html, "\n", "<br>")
+	return buf.String()
 }
 
 // handleLoginSubmit processes login form submissions.

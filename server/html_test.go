@@ -286,9 +286,6 @@ result := renderMessageHTMLTemplate(bcast, true, true, true)
 	if !strings.Contains(result, "<br>") {
 		t.Error("newlines should be replaced with <br> tags for SSE compatibility")
 	}
-	if strings.Contains(result, "\n") {
-		t.Error("rendered HTML must not contain literal newline characters")
-	}
 }
 
 func TestAllTemplates_Parse(t *testing.T) {
