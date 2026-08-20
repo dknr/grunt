@@ -25,28 +25,6 @@ type apiImpl struct {
 // MaxMessageLength is the maximum allowed message content size in bytes.
 const MaxMessageLength = 10240
 
-// requireAdmin is a middleware that checks if the current user is an admin.
-func (a *apiImpl) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		userID := UserIDFromContext(r)
-		if userID == "" {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
-		isAdmin, err := a.store.IsUserAdmin(userID)
-		if err != nil {
-			slog.Error("Error checking admin status", "error", err)
-			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
-			return
-		}
-		if !isAdmin {
-			http.Error(w, `{"error":"forbidden: admin access required"}`, http.StatusForbidden)
-			return
-		}
-		next(w, r)
-	}
-}
-
 // RegisterUser implements the register endpoint.
 func (a *apiImpl) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
