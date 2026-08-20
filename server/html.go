@@ -151,7 +151,10 @@ func HandleIndexOrLogin(w http.ResponseWriter, r *http.Request) {
 				ID:              int(m.ID),
 				User:            m.UserID,
 				Content:         m.Content,
-				RenderedContent: ReplaceEmotes(m.Content),
+				RenderedContent: func() template.HTML {
+				result := ReplaceEmotes(m.Content)
+				return template.HTML(strings.ReplaceAll(string(result), "\n", "<br>"))
+			}(),
 				Timestamp:       m.Timestamp.Format("15:04"),
 				Color:           avatarColor(m.UserID),
 				TextColor:       avatarTextColor(m.UserID),
