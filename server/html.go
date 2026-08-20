@@ -320,7 +320,7 @@ func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Atomically validate the invite, mark it used, and create the user
-	created, err := DefaultStore.RegisterWithInvite(inviteCode, user, password)
+	_, err := DefaultStore.RegisterWithInvite(inviteCode, user, password)
 	if err != nil {
 		// Check if it's a duplicate user error
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
@@ -329,11 +329,6 @@ func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Warn("Registration failed", "user", user, "error", err)
-		loginTmpl.Execute(w, map[string]string{"Error": "Invalid or expired invite code"})
-		return
-	}
-	if !created {
-		slog.Warn("Registration attempt with invalid invite", "user", user)
 		loginTmpl.Execute(w, map[string]string{"Error": "Invalid or expired invite code"})
 		return
 	}

@@ -40,7 +40,7 @@ func (a *apiImpl) RegisterUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate invite code (required for all registrations)
-	created, err := a.store.RegisterWithInvite(req.InviteCode, req.User, req.Password)
+	_, err := a.store.RegisterWithInvite(req.InviteCode, req.User, req.Password)
 	if err != nil {
 		// Check if it's a duplicate user error
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
@@ -54,11 +54,6 @@ func (a *apiImpl) RegisterUser(w http.ResponseWriter, r *http.Request) {
 		}
 		slog.Warn("Registration failed", "user", req.User, "error", err)
 		http.Error(w, `{"error":"`+html.EscapeString(err.Error())+`"}`, http.StatusUnauthorized)
-		return
-	}
-	if !created {
-		slog.Warn("Registration attempt with invalid invite", "user", req.User)
-		http.Error(w, `{"error":"invalid or expired invite code"}`, http.StatusUnauthorized)
 		return
 	}
 
