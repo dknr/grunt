@@ -86,7 +86,17 @@ func (a *apiImpl) GetInvite(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromContext(r)
 
 	// Generate new invite code
-	code := generateInviteCode()
+	code, err := generateInviteCode()
+	if err != nil {
+		slog.Error("Error generating invite code", "error", err)
+		if isHTMXRequest(r) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(`<p class="error">Failed to generate invite code.</p>`))
+			return
+		}
+		http.Error(w, `{"error":"failed to generate invite code"}`, http.StatusInternalServerError)
+		return
+	}
 	expiresAt := time.Now().Add(10 * time.Minute)
 
 	if err := a.store.CreateInvite(code, expiresAt, userID); err != nil {
@@ -119,10 +129,12 @@ func (a *apiImpl) GetInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 // generateInviteCode generates a random invite code.
-func generateInviteCode() string {
+func generateInviteCode() (string, error) {
 	b := make([]byte, 8)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // LoginUser implements the login endpoint.
