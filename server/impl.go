@@ -104,8 +104,13 @@ func (a *apiImpl) RegisterUser(w http.ResponseWriter, r *http.Request) {
 
 // GetInvite implements the invite generation endpoint.
 func (a *apiImpl) GetInvite(w http.ResponseWriter, r *http.Request) {
+	if !AuthenticatedFromContext(r) {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
 	// Get user ID from context (set by AuthMiddleware)
-	userID := r.Context().Value(userIDKey).(string)
+	userID := UserIDFromContext(r)
 
 	// Generate new invite code
 	code := generateInviteCode()
