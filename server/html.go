@@ -319,31 +319,33 @@ func handleRegisterSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate invite code
-	valid, err := DefaultStore.ValidateInvite(inviteCode)
+	// Atomically validate the invite, mark it used, and create the user
+	created, err := DefaultStore.RegisterWithInvite(inviteCode, user, password)
 	if err != nil {
-		slog.Error("Error validating invite", "error", err)
-		loginTmpl.Execute(w, map[string]string{"Error": "Failed to validate invite code"})
+		// Check if it's a duplicate user error
+		if strings.Contains(err.Error(), "UNIQUE constraint") {
+			slog.Warn("User already registered", "user", user)
+			loginTmpl.Execute(w, map[string]string{"Error": "User already exists"})
+			return
+		}
+		slog.Warn("Registration failed", "user", user, "error", err)
+		loginTmpl.Execute(w, map[string]string{"Error": "Invalid or expired invite code"})
 		return
 	}
-	if !valid {
+	if !created {
 		slog.Warn("Registration attempt with invalid invite", "user", user)
 		loginTmpl.Execute(w, map[string]string{"Error": "Invalid or expired invite code"})
 		return
 	}
 
-	// Create user
-	if err := DefaultStore.CreateUser(user, password); err != nil {
-		// Check if user already exists
-		slog.Warn("Registration attempt with existing user", "user", user)
-		loginTmpl.Execute(w, map[string]string{"Error": "User already exists"})
-		return
-	}
-
-	// Mark invite as used
-	if err := DefaultStore.MarkInviteUsed(inviteCode, user); err != nil {
-		slog.Error("Error marking invite as used", "error", err)
-		// Don't fail registration if invite marking fails
+	// Set first user as admin
+	userCount, err := DefaultStore.CreateUserCount()
+	if err == nil && userCount == 1 {
+		if err := DefaultStore.SetUserAdmin(user); err != nil {
+			slog.Error("Failed to set first user as admin", "error", err)
+		} else {
+			slog.Info("First user registered, granted admin privileges", "user", user)
+		}
 	}
 
 	// Generate token for auto-login after registration
