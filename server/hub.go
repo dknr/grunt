@@ -114,12 +114,16 @@ func (h *Hub) Run() {
 
 		case sub := <-h.unregister:
 			h.mu.Lock()
+			removed := false
 			if _, ok := h.subscribers[sub.clientID]; ok {
 				delete(h.subscribers, sub.clientID)
 				slog.Info("Subscriber disconnected", "client_id", sub.clientID, "total_subscribers", len(h.subscribers))
-				h.broadcastEvent("leave", sub.clientID, sub.userID)
+				removed = true
 			}
 			h.mu.Unlock()
+			if removed {
+				h.broadcastEvent("leave", sub.clientID, sub.userID)
+			}
 
 		case <-h.stop:
 			slog.Info("Hub Run loop stopping")
@@ -235,7 +239,14 @@ func (h *Hub) broadcastEvent(event, clientID, userID string) {
 		slog.Error("Error marshaling event message", "error", err)
 		return
 	}
-	h.broadcast <- data
+	// This runs inside the Run loop, which is the sole consumer of
+	// h.broadcast. A blocking send here would deadlock the hub when
+	// the buffer is full, so drop the event instead.
+	select {
+	case h.broadcast <- data:
+	default:
+		slog.Warn("Broadcast buffer full, dropping event", "event", event, "client_id", clientID)
+	}
 }
 
 func (s *Subscriber) writePump() {

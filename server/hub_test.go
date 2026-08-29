@@ -1,6 +1,7 @@
 package server
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -72,6 +73,96 @@ func TestBroadcast(t *testing.T) {
 	}
 
 	// Cleanup
+	close(sub.done)
+}
+
+// TestBroadcastEventNonBlockingWhenBufferFull guards against the Run loop
+// deadlocking on its own send: broadcastEvent is called from inside the Run
+// loop, which is the sole consumer of h.broadcast.
+func TestBroadcastEventNonBlockingWhenBufferFull(t *testing.T) {
+	hub := NewHub(nil)
+
+	// Run loop is intentionally not started: a full buffer with no
+	// consumer is the worst case for a blocking send.
+	for i := 0; i < cap(hub.broadcast); i++ {
+		hub.broadcast <- []byte(`{"type":"message","content":"filler"}`)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		hub.broadcastEvent("join", "test-client", "test-user")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("broadcastEvent blocked on a full broadcast buffer")
+	}
+}
+
+// TestRegisterAndUnregisterDuringBroadcastFlood simulates a burst of
+// SendMessage calls flooding the broadcast buffer while an SSE client
+// connects and disconnects; register/unregister must still be processed.
+func TestRegisterAndUnregisterDuringBroadcastFlood(t *testing.T) {
+	hub := newTestHub(t)
+
+	sub := &Subscriber{
+		hub:      hub,
+		send:     make(chan []byte, 256),
+		clientID: "flood-client",
+		done:     make(chan struct{}),
+	}
+
+	stopFlood := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stopFlood:
+					return
+				default:
+					hub.BroadcastMessage([]byte(`{"type":"message","content":"burst"}`))
+				}
+			}
+		}()
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+
+	hub.register <- sub
+	for {
+		hub.mu.RLock()
+		_, ok := hub.subscribers[sub.clientID]
+		hub.mu.RUnlock()
+		if ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("register not processed during broadcast flood")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	hub.unregister <- sub
+	for {
+		hub.mu.RLock()
+		_, ok := hub.subscribers[sub.clientID]
+		hub.mu.RUnlock()
+		if !ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("unregister not processed during broadcast flood")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	close(stopFlood)
+	wg.Wait()
 	close(sub.done)
 }
 
