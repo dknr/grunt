@@ -80,7 +80,10 @@ func scanImageEmotes(dir string) {
 		return
 	}
 
-	imageEmoteNames := make(map[string]bool)
+	// Build the new image-emote entries outside the lock so filesystem I/O
+	// never holds emoteMu. All map mutations happen under the lock below to
+	// avoid data races with concurrent readers (ReplaceEmotes).
+	loaded := make(map[string]string)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -99,18 +102,21 @@ func scanImageEmotes(dir string) {
 			continue
 		}
 
-		imageEmoteNames[name] = true
 		src := "/emotes/" + entry.Name()
-		emoteMap[name] = `<img src="` + src + `" alt=":` + template.HTMLEscapeString(name) + `:" class="emote">`
+		loaded[name] = `<img src="` + src + `" alt=":` + template.HTMLEscapeString(name) + `:" class="emote">`
 		slog.Debug("Loaded image emote", "name", name, "file", entry.Name())
 	}
 
-	// Remove any previously-loaded image emotes that no longer exist on disk.
 	emoteMu.Lock()
+	// Drop every non-text entry (stale or refreshed image emotes), then
+	// re-insert the freshly-loaded image emotes so removed files disappear.
 	for key := range emoteMap {
-		if !imageEmoteNames[key] && !textEmoteNames[key] {
+		if !textEmoteNames[key] {
 			delete(emoteMap, key)
 		}
+	}
+	for name, value := range loaded {
+		emoteMap[name] = value
 	}
 	count := len(emoteMap) - len(textEmoteNames)
 	if count < 0 {

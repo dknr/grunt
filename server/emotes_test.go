@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -175,4 +176,53 @@ func TestResolveEmotePath(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestEmoteMapRaceDuringReload guards against a data race between the
+// fsnotify-triggered reload path (scanImageEmotes) and concurrent message
+// rendering (ReplaceEmotes). It creates/removes emote files in a tight loop
+// while a reader goroutine renders messages that reference the emote, forcing
+// overlapping map reads and writes. Run with -race; it fails if any map
+// mutation in scanImageEmotes happens outside emoteMu.
+func TestEmoteMapRaceDuringReload(t *testing.T) {
+	tmpDir := t.TempDir()
+	const emoteName = "raceemote"
+	filePath := filepath.Join(tmpDir, emoteName+".png")
+
+	// Keep the reader continuously active for the whole reload window so the
+	// two goroutines are guaranteed to overlap in time.
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = ReplaceEmotes("hello :" + emoteName + ": world")
+			}
+		}
+	}()
+
+	// Simulate the watcher's reload: repeatedly add and remove the emote file,
+	// rescanning after each change so the global emoteMap is mutated under the
+	// reader's concurrent access.
+	for i := 0; i < 200; i++ {
+		if err := os.WriteFile(filePath, []byte{}, 0644); err != nil {
+			t.Fatalf("failed to create emote file: %v", err)
+		}
+		scanImageEmotes(tmpDir)
+		if err := os.Remove(filePath); err != nil {
+			t.Fatalf("failed to remove emote file: %v", err)
+		}
+		scanImageEmotes(tmpDir)
+	}
+
+	close(stop)
+	wg.Wait()
+
+	// Drop the test emote from the global map.
+	scanImageEmotes(t.TempDir())
 }
