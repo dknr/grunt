@@ -134,13 +134,22 @@ func (s *Store) RegisterWithInvite(code, user, password string) (bool, error) {
 		return false, fmt.Errorf("invite code expired")
 	}
 
-	// Mark invite as used
-	_, err = tx.Exec(
+	// Mark invite as used. The WHERE used_at IS NULL clause is the single-use
+	// guard; require exactly one row affected so a concurrent transaction that
+	// already consumed this code cannot silently proceed to create a user.
+	res, err := tx.Exec(
 		"UPDATE invites SET used_at = ?, used_by_user = ? WHERE code = ? AND used_at IS NULL",
 		time.Now().Format(time.RFC3339), user, code,
 	)
 	if err != nil {
 		return false, fmt.Errorf("mark invite used: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("rows affected: %w", err)
+	}
+	if rows != 1 {
+		return false, fmt.Errorf("invite code already used")
 	}
 
 	// Hash password and create user
