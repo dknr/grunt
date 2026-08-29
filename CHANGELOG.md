@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.5.8 — Invite Code Security, Hub & Emote Race Fixes
+
+### Fixes
+- Require authentication to generate invite codes: unauthenticated `GetInvite` calls are rejected with 401, and the user is read from context via `UserIDFromContext` instead of an unchecked type assertion
+- Enforce single-use of invite codes during registration: the `UPDATE ... WHERE used_at IS NULL` guard now requires exactly one affected row, so a concurrent transaction that already consumed the code cannot silently proceed to create a user
+- Make web registration atomic: `handleRegisterSubmit` now uses the single-transaction `RegisterWithInvite` path instead of separate ValidateInvite/CreateUser/MarkInviteUsed calls, and grants the first registered user admin (matching the API path)
+- Surface rand failure when generating invite codes: `generateInviteCode` now propagates `rand.Read` errors instead of yielding a predictable zero-filled code
+- Render multi-line messages consistently on initial load: the initial-load path now applies the same newline-to-`<br>` conversion as the streaming SSE path
+- Prevent hub deadlock from blocking broadcast send: the Run loop's internal join/leave send is now non-blocking (drops with a warning instead of stalling the hub when the buffer is full)
+- Prevent data race in emote map during watcher reloads: all `emoteMap` mutations now happen under the lock, with the directory scan kept outside it
+
+### Tests
+- Regression test for the hub full-buffer case (`TestBroadcastEventNonBlockingWhenBufferFull`)
+- Regression test for register/unregister during a broadcast flood (`TestRegisterAndUnregisterDuringBroadcastFlood`)
+- Regression test reloading emotes while rendering messages concurrently (`TestEmoteMapRaceDuringReload`), which fails under `go test -race` against the pre-fix code
+
+### Refactoring
+- Removed unused `requireAdmin` middleware (every admin handler inlines an `IsAdminFromContext` check)
+- Dropped unreachable `if !created` registration branch from both call sites
+- Removed the empty TODO file
+
 ## v0.5.7 — Profile Pictures, E2E Tests, Date Dividers & Template Formatting
 
 ### Features
