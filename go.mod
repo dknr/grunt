@@ -6,7 +6,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getkin/kin-openapi v0.137.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
-	github.com/oapi-codegen/runtime v1.4.0
+	github.com/oapi-codegen/runtime v1.7.0
 	golang.org/x/crypto v0.50.0
 	golang.org/x/image v0.41.0
 	modernc.org/sqlite v1.50.0

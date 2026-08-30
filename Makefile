@@ -30,7 +30,7 @@ build: codegen
 
 codegen:
 	@if ! command -v oapi-codegen >/dev/null 2>&1; then \
-		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest; \
+		go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0; \
 	fi
 	$(GOPATH_BIN)/oapi-codegen -package server -generate std-http,types,spec -o server/openapi.gen.go openapi.yaml
 
